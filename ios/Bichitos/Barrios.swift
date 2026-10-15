@@ -146,6 +146,29 @@ extension World {
         districts.count < District.themes.count ? max(1, World.capacity * districts.count + 1 - bichitos.count) : nil
     }
 
+    /// The whole ring, locked districts included: what the Mapa level shows.
+    var mapBounds: Rect {
+        let rs = layout
+        let x0 = rs.map(\.x).min()!, y0 = rs.map(\.y).min()!
+        return Rect(x: x0, y: y0, w: rs.map { $0.x + $0.w }.max()! - x0, h: rs.map { $0.y + $0.h }.max()! - y0)
+    }
+
+    /// A locked district as the Mapa level draws it: a dashed outline at its place in the ring, with a lock.
+    /// `missing` (`bichitosToNextDistrict`) only on the one most likely to open next (`nextDistrict`):
+    /// the count is for whichever opens next, so on every lock it would promise them all at once.
+    struct LockedOutline: Equatable {
+        let theme: Int
+        let rect: Rect
+        let missing: Int?
+    }
+
+    var lockedOutlines: [LockedOutline] {
+        let open = Set(districts.map(\.index)), next = nextDistrict()?.theme, missing = bichitosToNextDistrict
+        return District.themes.indices.filter { !open.contains($0) }.map {
+            LockedOutline(theme: $0, rect: layout[$0], missing: $0 == next ? missing : nil)
+        }
+    }
+
     /// Bichitos whose home is `district` (whether or not they are walking there right now).
     func population(of district: Int) -> Int { bichitos.filter { $0.district == district }.count }
 }

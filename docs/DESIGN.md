@@ -93,7 +93,7 @@ el nivel más próximo con un muelle (`response 0.4, damping 0.8`).
 
 | Nivel | 1 u = | Se ve |
 |---|---|---|
-| Mapa | 1 pt | Barrios como manchas de su tinte con el nombre encima y caminos entre ellos; cada bichito es un punto redondo de 6 pt de su color base |
+| Mapa | 0,25 pt (el anillo entero cabe en un iPhone de 375 pt) | Barrios como manchas de su tinte con el nombre encima y caminos entre ellos; cada bichito es un punto redondo de 6 pt de su color base |
 | Barrio | 3 pt | Edificios y bichitos; los estados solo como icono pixel sobre la cabeza |
 | Calle | 5 pt | Además, nombres pixel y bocadillos |
 | Cerca | 8 pt | El máximo detalle; para seguir a un bichito se usa «Seguir» en `BichitoPeek` |

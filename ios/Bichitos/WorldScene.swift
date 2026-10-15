@@ -7,9 +7,10 @@ enum Ink {
     static let accent = UIColor(red: 1, green: 0x6B / 255, blue: 0x4A / 255, alpha: 1)
 
     /// District tint: its theme colour mixed 8% over mist, so districts tell apart without competing with the bichitos.
-    static func tint(_ district: Int) -> UIColor {
+    /// The Mapa level, with no ground to read, mixes more (`amount`).
+    static func tint(_ district: Int, _ amount: CGFloat = 0.08) -> UIColor {
         let h = District.themes[district % District.themes.count].tint
-        func mix(_ shift: UInt32, _ base: CGFloat) -> CGFloat { base * 0.92 + CGFloat((h >> shift) & 0xFF) / 255 * 0.08 }
+        func mix(_ shift: UInt32, _ base: CGFloat) -> CGFloat { base * (1 - amount) + CGFloat((h >> shift) & 0xFF) / 255 * amount }
         return UIColor(red: mix(16, 0xF3 / 255), green: mix(8, 0xF1 / 255), blue: mix(0, 0xEC / 255), alpha: 1)
     }
 }
@@ -54,6 +55,10 @@ final class WorldScene: SKScene, ObservableObject {
     private var foodNodes: [Int: SKNode] = [:]
     private var eggNodes: [Int: SKNode] = [:]
     private var noteNodes: [Int: SKNode] = [:]
+    /// Mapa level: a dot per bichito, and the district blobs, paths and locked outlines (`drawMap`).
+    private var dotNodes: [Int: SKNode] = [:]
+    private let mapLayer = SKNode()
+    private var mapKey = ""
     /// Tray toggle: a tap on the ground drops food.
     var foodMode = false
     var foodKind = Food.Kind.fruta
@@ -94,6 +99,7 @@ final class WorldScene: SKScene, ObservableObject {
             let start = UserDefaults.standard.double(forKey: "screenshot-zoom")
             lens.scale = Camera.Level.nearest(start > 0 ? start : max(3, Double(Int(min(size.width, size.height) / 140)))).scale
         }
+        if mapLayer.parent == nil { mapLayer.zPosition = -50; addChild(mapLayer) }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -104,7 +110,7 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Keeps the camera on the (possibly grown) map and tells the simulation what is on screen.
     private func fit() {
-        lens.clamp(to: world.bounds, screenSize)
+        lens.clamp(to: level == .map ? world.mapBounds : world.bounds, screenSize)
         world.visibleRect = lens.rect(screenSize)
     }
 
@@ -254,15 +260,19 @@ final class WorldScene: SKScene, ObservableObject {
             node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
             node.zPosition = depth(node.position)
             node.level = level
+            node.isHidden = level == .map // a dot instead (`dotNodes`)
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
             node.removeFromParent()
             bichitoNodes[id] = nil
         }
-        sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
-        sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
-        sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
+        // The Mapa level shows only districts and dots: food, eggs and notes would be specks.
+        let onMap = level == .map
+        sync(&dotNodes, onMap ? world.bichitos.map { ($0.id, $0.pos) } : [], make: makeDot)
+        sync(&foodNodes, onMap ? [] : world.foods.map { ($0.id, $0.pos) }, make: makeFood)
+        sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
+        sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
     /// Each district is a tinted patch of ground with its name near the top.
@@ -284,13 +294,91 @@ final class WorldScene: SKScene, ObservableObject {
             addChild(patch)
             districtNodes.append(patch)
         }
+        mapLayer.isHidden = level != .map
+        if level == .map { drawMap() }
         for (k, patch) in districtNodes.enumerated() {
+            patch.isHidden = level == .map
             let r = world.districts[k].rect
             patch.position = screen(Vec(r.x, r.y))
             patch.size = CGSize(width: CGFloat(r.w) * unit, height: CGFloat(r.h) * unit)
             patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -60)
         }
     }
+
+    /// Mapa level (DESIGN.md "Zoom", "Barrios"): open districts as blobs of their tint with the name on top,
+    /// soft straight paths between neighbours, and locked ones as a dashed `hairline` outline with a lock.
+    /// Built in points from the world origin and moved as one layer; built again only when it changes.
+    private func drawMap() {
+        mapLayer.position = screen(.zero)
+        let locked = world.lockedOutlines, es = world.language == .es
+        let key = "\(unit) \(world.districts.count) \(locked.compactMap(\.missing)) \(es)"
+        guard key != mapKey else { return }
+        mapKey = key
+        mapLayer.removeAllChildren()
+        func box(_ r: Rect) -> CGRect {
+            CGRect(x: CGFloat(r.x) * unit, y: -CGFloat(r.y + r.h) * unit, width: CGFloat(r.w) * unit, height: CGFloat(r.h) * unit)
+        }
+        func point(_ p: Vec) -> CGPoint { CGPoint(x: CGFloat(p.x) * unit, y: -CGFloat(p.y) * unit) }
+        func label(_ text: String, size: CGFloat, alpha: CGFloat, at p: CGPoint) {
+            let font = UIFont.systemFont(ofSize: size, weight: .heavy)
+            let l = SKLabelNode()
+            l.attributedText = NSAttributedString(string: text, attributes: [
+                .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: size),
+                .foregroundColor: Ink.ink.withAlphaComponent(alpha),
+            ])
+            l.verticalAlignmentMode = .top
+            l.position = p
+            l.zPosition = 2
+            mapLayer.addChild(l)
+        }
+        let corner = 32 * unit // 16 u: blobs, not boxes
+        let open = world.districts
+        for (i, a) in open.enumerated() {
+            for b in open[(i + 1)...] where (a.rect.center - b.rect.center).length < 1000 { // ring neighbours only
+                let path = CGMutablePath()
+                path.move(to: point(a.rect.center))
+                path.addLine(to: point(b.rect.center))
+                let line = SKShapeNode(path: path)
+                line.strokeColor = Ink.ink.withAlphaComponent(0.12)
+                line.lineWidth = 3
+                line.lineCap = .round
+                mapLayer.addChild(line)
+            }
+        }
+        for d in open {
+            let r = box(d.rect)
+            let blob = SKShapeNode(rect: r, cornerRadius: corner)
+            blob.fillColor = Ink.tint(d.index, 0.45)
+            blob.strokeColor = .clear
+            blob.zPosition = 1
+            mapLayer.addChild(blob)
+            label(d.name(world.language), size: 13, alpha: 0.7, at: CGPoint(x: r.midX, y: r.maxY - 6))
+        }
+        for l in locked {
+            let r = box(l.rect)
+            let outline = SKShapeNode(path: CGPath(roundedRect: r, cornerWidth: corner, cornerHeight: corner, transform: nil)
+                .copy(dashingWithPhase: 0, lengths: [6, 4]))
+            outline.strokeColor = Ink.ink.withAlphaComponent(0.1) // hairline
+            outline.lineWidth = 1
+            outline.zPosition = 1
+            mapLayer.addChild(outline)
+            let lock = SKSpriteNode(texture: WorldScene.lock)
+            lock.position = CGPoint(x: r.midX, y: r.midY + (l.missing == nil ? 0 : 8))
+            lock.zPosition = 2
+            mapLayer.addChild(lock)
+            if let n = l.missing {
+                label(es ? "\(n == 1 ? "falta" : "faltan") \(n) \(n == 1 ? "bichito" : "bichitos")" : "\(n) more \(n == 1 ? "bichito" : "bichitos")",
+                      size: 11, alpha: 0.55, at: CGPoint(x: r.midX, y: r.midY - 4))
+            }
+        }
+    }
+
+    /// `lock.fill` in ink at 35%, drawn into a bitmap: SpriteKit ignores a symbol's tint.
+    private static let lock: SKTexture = {
+        let symbol = UIImage(systemName: "lock.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))!
+            .withTintColor(Ink.ink.withAlphaComponent(0.35), renderingMode: .alwaysOriginal)
+        return SKTexture(image: UIGraphicsImageRenderer(size: symbol.size).image { _ in symbol.draw(at: .zero) })
+    }()
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
     private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode) {
@@ -329,6 +417,15 @@ final class WorldScene: SKScene, ObservableObject {
         let n = SKSpriteNode(texture: t, size: CGSize(width: t.size().width * pixel, height: t.size().height * pixel))
         // Centred on its world point, 6 whole pixels up from the shadow row, so it never straddles device pixels.
         n.anchorPoint = CGPoint(x: 0.5, y: 6 / t.size().height)
+        return n
+    }
+
+    /// A 6 pt dot of its palette's base colour.
+    private func makeDot(_ id: Int) -> SKNode {
+        let n = SKShapeNode(circleOfRadius: 3)
+        let c = world.bichito(id).map { Look.dot($0.recipe) } ?? RGBA(hex: 0x2B2A33)
+        n.fillColor = UIColor(red: CGFloat(c.r) / 255, green: CGFloat(c.g) / 255, blue: CGFloat(c.b) / 255, alpha: 1)
+        n.strokeColor = .clear
         return n
     }
 
