@@ -55,6 +55,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var finger: UITouch?
     private var grabOffset = Vec.zero
     private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
+    private(set) var follow = Follow()
 
     /// The camera starts on `focus`, or on the centre of the first district.
     init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
@@ -152,6 +153,26 @@ final class WorldScene: SKScene, ObservableObject {
 
     func rename(_ id: Int, to name: String) { world.rename(id, to: name) }
 
+    // MARK: - BichitoPeek actions
+
+    /// Called with the bichito under a tap, or nil when the tap was on the ground (closes the peek).
+    var onPeek: ((Int?) -> Void)?
+
+    func pet(_ id: Int) {
+        world.pet(id)
+        Haptics.tap()
+    }
+
+    /// Drops food right next to it, to the side so it doesn't land under its body.
+    func feed(_ id: Int) {
+        guard let b = world.bichito(id) else { return }
+        // TODO(#41): drop its favourite food once foods have kinds (PR #54); for now, the default food.
+        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0))
+        Haptics.tap()
+    }
+
+    func startFollowing(_ id: Int) { follow.start(id) }
+
     // MARK: - Long press → card
 
     /// Called with the id of the bichito under a long press.
@@ -181,6 +202,9 @@ final class WorldScene: SKScene, ObservableObject {
             previous = Dictionary(world.bichitos.map { ($0.id, $0.pos) }, uniquingKeysWith: { a, _ in a })
             world.tick()
             for b in world.bichitos { bichitoNodes[b.id]?.tick(b) }
+        }
+        if let to = follow.target(in: world) { // glide, so the 20 Hz steps and the first trip don't jump
+            lens.center = lens.center + (to - lens.center) * (1 - exp(-6 * dt))
         }
         fit()
         let name = world.districts[world.district(at: lens.center)].name(world.language)
@@ -343,7 +367,9 @@ extension WorldScene {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = finger, touches.contains(t), var g = touch, let view else { return }
         let p = t.location(in: view)
-        if case let .grab(id) = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp) {
+        let action = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp)
+        follow.after(action)
+        if case let .grab(id) = action {
             world.grab(id)
             Haptics.tap()
         }
@@ -361,7 +387,8 @@ extension WorldScene {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = finger, touches.contains(t), let g = touch, let view else { return }
         switch g.tapAction {
-        case let .pet(id): world.pet(id); Haptics.tap()
+        case let .peek(id): onPeek?(id); Haptics.tap()
+        case .close: onPeek?(nil)
         case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
         default: break
         }
