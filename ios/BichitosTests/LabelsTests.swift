@@ -46,13 +46,13 @@ final class LabelsTests: XCTestCase {
         XCTAssertEqual(shown, [true, false, true])
     }
 
-    func testNamesKeepClearOfShownBubbles() {
+    func testBubbleWaitsForAName() {
         var layout = LabelLayout(), shown: [Bool] = []
-        let bubble = CGRect(x: 0, y: 20, width: 80, height: 30)
-        var names = [CGRect(x: 10, y: 10, width: 40, height: 14)]
-        layout.place(names: &names, bubbles: [bubble], shown: &shown)
-        XCTAssertFalse(names[0].isNull)
-        XCTAssertFalse(LabelLayout.touch(names[0], bubble))
+        let name = CGRect(x: 10, y: 10, width: 40, height: 14)
+        var names = [name]
+        layout.place(names: &names, bubbles: [CGRect(x: 0, y: 20, width: 80, height: 30), CGRect(x: 0, y: 40, width: 80, height: 30)], shown: &shown)
+        XCTAssertEqual(names, [name], "the name stays")
+        XCTAssertEqual(shown, [false, true])
     }
 
     /// 40 bichitos packed in a corner: no two names touch, each stays near its own, and it is quick.

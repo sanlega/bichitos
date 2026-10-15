@@ -12,21 +12,21 @@ struct LabelLayout {
     private var kept: [CGRect] = []
     private var queue: [CGRect] = []
 
-    /// `bubbles` come most important first; one that would touch a bubble already kept waits (`shown` false).
-    /// Then each name keeps its place if it is clear, or moves to the nearest clear spot: nudged left or right
-    /// past what it touches, or one or two rows lower. Names also keep clear of the bubbles shown.
-    /// A name with no clear spot near its bichito becomes `.null` (hidden).
+    /// Names first: each keeps its place if it is clear, or moves to the nearest clear spot, nudged left or right
+    /// past what it touches or one or two rows lower; one with no clear spot near its bichito becomes `.null` (hidden).
+    /// Then `bubbles`, most important first: one that would touch a name or a bubble already kept waits (`shown` false).
+    /// Names go first because they stay, while a phrase can wait a moment.
     mutating func place(names: inout [CGRect], bubbles: [CGRect], shown: inout [Bool]) {
         kept.removeAll(keepingCapacity: true)
         shown.removeAll(keepingCapacity: true)
+        for i in names.indices {
+            names[i] = spot(for: names[i])
+            if !names[i].isNull { kept.append(names[i]) }
+        }
         for b in bubbles {
             let free = clear(b)
             shown.append(free)
             if free { kept.append(b) }
-        }
-        for i in names.indices {
-            names[i] = spot(for: names[i])
-            if !names[i].isNull { kept.append(names[i]) }
         }
     }
 
