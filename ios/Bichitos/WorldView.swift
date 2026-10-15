@@ -6,6 +6,7 @@ import UIKit
 struct WorldView: View {
     @ObservedObject var scene: WorldScene
     @State private var foodMode = false
+    @State private var creating = false
 
     var body: some View {
         ZStack {
@@ -31,12 +32,19 @@ struct WorldView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
             VStack {
                 Spacer()
-                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { scene.addRandomBichito() })
+                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
                     .padding(.bottom, 8)
             }
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
+        .sheet(isPresented: $creating) {
+            CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
+                         language: scene.world.language) { recipe, name, description in
+                scene.drop(recipe, name: name, description: description)
+            }
+        }
+        .onAppear { if CommandLine.arguments.contains("-screenshot-editor") { creating = true } }
     }
 }
 

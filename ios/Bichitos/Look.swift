@@ -35,6 +35,17 @@ enum Look {
         return blinking ? .blink : .normal
     }
 
+    /// The face it pulls for a moment when the editor gives it a new personality.
+    static func reaction(_ p: Recipe.Personality) -> Expression {
+        switch p {
+        case .curiosa, .hiperactiva: return .happy
+        case .nerviosa: return .scared
+        case .dormilona: return .asleep
+        case .territorial: return .angry
+        case .romantica: return .inLove
+        }
+    }
+
     /// The emoji above its head, or nil when there is nothing worth saying.
     /// `moving`: it is walking to a new home district (emigrating).
     static func bubble(mood: Bichito.Mood, needs: Bichito.Needs, dizzy: Double, moving: Bool = false) -> String? {
