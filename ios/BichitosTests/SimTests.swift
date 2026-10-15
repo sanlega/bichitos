@@ -31,19 +31,21 @@ final class SimTests: XCTestCase {
     func testBodiesStayInsideTheMap() {
         var w = world(seed: 5, count: 30)
         XCTAssertGreaterThanOrEqual(w.districts.count, 3) // 14 per district
-        w.visibleRect = Rect(x: 0, y: 0, w: w.size.x, h: w.size.y)
+        let m = w.bounds
+        w.visibleRect = m
         for (k, b) in w.bichitos.enumerated() where k % 3 == 0 {
             w.grab(b.id)
             w.release(b.id, velocity: Vec(3000, -2500))
         }
-        w.scare(at: Vec(500, 800))
+        w.scare(at: w.districts[0].rect.center)
         var outside = 0
         for t in 0..<4000 {
             if t == 2000 { w.visibleRect = nil }
             w.tick()
+            let m = w.bounds
             for b in w.bichitos {
                 let r = b.recipe.radius - 1e-6
-                if b.pos.x < r || b.pos.y < r || b.pos.x > w.size.x - r || b.pos.y > w.size.y - r { outside += 1 }
+                if b.pos.x < m.x + r || b.pos.y < m.y + r || b.pos.x > m.x + m.w - r || b.pos.y > m.y + m.h - r { outside += 1 }
             }
         }
         XCTAssertEqual(outside, 0)

@@ -67,16 +67,17 @@ enum Terrarium {
         }
     }
 
-    /// The edge between the first two districts, with a bichito packing up for the second one.
+    /// The mist between Plaza Mayor and its right-hand neighbour, with a bichito packing up for the neighbour.
     static func border() -> WorldScene {
         var w = World(seed: 8, date: Date(timeIntervalSince1970: 1_800_000_000))
-        w.districts.append(District(index: 1))
+        let right = w.layout.firstIndex { $0.y == 0 && $0.x > 0 } ?? 1
+        w.unlock(right)
         var rng = SeededRNG(seed: 8)
-        let edge = World.districtSize.x
-        spawn(9, in: Rect(x: edge - 140, y: 400, w: 280, h: 800), world: &w, rng: &rng)
+        let edge = World.districtSize.x + World.districtGap / 2, mid = World.districtSize.y / 2
+        spawn(9, in: Rect(x: edge - 240, y: 0, w: 480, h: World.districtSize.y), world: &w, rng: &rng)
         for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
         let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
-        return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
+        return WorldScene(world: w, focus: Vec(edge, mid)) { w, _ in
             w.bichitos[leaving].district = 1
             w.record(.emigrated(w.bichitos[leaving].id, 1)) // so the move gets its toast
         }

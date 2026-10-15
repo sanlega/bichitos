@@ -100,7 +100,7 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Keeps the camera on the (possibly grown) map and tells the simulation what is on screen.
     private func fit() {
-        lens.clamp(to: world.size, screenSize)
+        lens.clamp(to: world.bounds, screenSize)
         world.visibleRect = lens.rect(screenSize)
     }
 
