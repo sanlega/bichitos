@@ -59,6 +59,9 @@ final class WorldScene: SKScene, ObservableObject {
     private var foodNodes: [Int: SKNode] = [:]
     private var eggNodes: [Int: SKNode] = [:]
     private var noteNodes: [Int: SKNode] = [:]
+    /// Buildings and decoration near the screen (#37), by `Building.id`, and their textures for this zoom level.
+    private var buildingNodes: [Int: SKSpriteNode] = [:]
+    private var buildingTextures: [Maqueta.Key: SKTexture] = [:]
     /// Mapa level: a dot per bichito, and the district blobs, paths and locked outlines (`drawMap`).
     private var dotNodes: [Int: SKNode] = [:]
     private var labels = LabelLayout()
@@ -283,6 +286,8 @@ final class WorldScene: SKScene, ObservableObject {
 
     private func draw(alpha: Double, dt: Double) {
         drawDistricts()
+        let inside = world.asleepInside, sleepingIn = Set(inside.values.joined())
+        drawBuildings(inside)
         var alive = Set<Int>()
         for b in world.bichitos {
             alive.insert(b.id)
@@ -298,11 +303,12 @@ final class WorldScene: SKScene, ObservableObject {
             }
             let from = previous[b.id] ?? b.pos
             let p = from + (b.pos - from) * alpha
-            // Feet sit a bit below the body centre the simulation tracks.
-            node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
-            node.zPosition = depth(node.position)
+            let feet = Maqueta.feet(p, radius: b.recipe.radius)
+            node.position = screen(Vec(p.x, feet))
+            node.zPosition = depth(feet)
             node.level = level
-            node.isHidden = level == .map // a dot instead (`dotNodes`)
+            // A dot instead on the map (`dotNodes`); asleep in its casita, its shut door and icon instead.
+            node.isHidden = level == .map || sleepingIn.contains(b.id)
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
@@ -488,7 +494,7 @@ final class WorldScene: SKScene, ObservableObject {
                 addChild(node)
             }
             node.position = screen(pos)
-            node.zPosition = depth(node.position)
+            node.zPosition = depth(pos.y)
         }
         for (id, node) in nodes where !alive.contains(id) {
             node.removeFromParent()
@@ -503,8 +509,60 @@ final class WorldScene: SKScene, ObservableObject {
         return CGPoint(x: (x * s).rounded() / s, y: (y * s).rounded() / s)
     }
 
-    /// Lower on screen = closer = drawn on top.
-    private func depth(_ p: CGPoint) -> CGFloat { 1000 - p.y / 10 }
+    /// The y-sort (`Maqueta.depth`) of something standing at world `y`.
+    private func depth(_ y: Double) -> CGFloat { CGFloat(Maqueta.depth(y, top: origin.y, unit: lens.unit)) }
+
+    /// #37: the open districts' buildings and decoration near the screen, each a cached texture in the y-sorted layer.
+    /// A casita with someone asleep inside shows its door shut and that one's state icon over the roof.
+    /// Not on the map, which shows only blobs and dots (DESIGN.md "Zoom").
+    private func drawBuildings(_ inside: [Int: [Int]]) {
+        var alive = Set<Int>(), used = Set<Maqueta.Key>()
+        if level != .map, let seen = world.visibleRect {
+            let open = Set(world.districts.map(\.index)), m = Maqueta.pad
+            let near = Rect(x: seen.x - m, y: seen.y - m, w: seen.w + 2 * m, h: seen.h + 2 * m)
+            for b in world.terrain.buildings where open.contains(b.theme) && Maqueta.frame(b).intersects(near) {
+                alive.insert(b.id)
+                let who = inside[b.id] ?? []
+                let key = Maqueta.key(b, closed: !who.isEmpty, level: level)
+                used.insert(key)
+                let texture = buildingTextures[key] ?? Fachada.paint(b, key)
+                buildingTextures[key] = texture
+                let node: SKSpriteNode
+                if let n = buildingNodes[b.id] {
+                    node = n
+                } else {
+                    node = SKSpriteNode(texture: texture)
+                    node.anchorPoint = CGPoint(x: 0, y: 1)
+                    let icon = SKSpriteNode()
+                    icon.anchorPoint = CGPoint(x: 0.5, y: 0)
+                    icon.size = CGSize(width: CGFloat(Look.Icon.canvas) * 2, height: CGFloat(Look.Icon.canvas) * 2) // like BichitoNode's
+                    icon.zPosition = 100
+                    node.addChild(icon)
+                    buildingNodes[b.id] = node
+                    addChild(node)
+                }
+                if node.texture !== texture { node.texture = texture }
+                let f = Maqueta.frame(b)
+                node.position = screen(Vec(f.x, f.y))
+                node.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
+                node.zPosition = depth(Maqueta.sortY(b))
+                guard let icon = node.children.first as? SKSpriteNode else { continue }
+                let sleeper = who.first.flatMap { world.bichito($0) }
+                let state = sleeper.flatMap { Look.bubble(mood: $0.mood, needs: $0.needs, dizzy: $0.dizzy) }
+                icon.isHidden = state == nil || !level.showsIcons
+                if let state, let sleeper {
+                    icon.texture = Sprites.shared.texture(state, accent: Palette.of(sleeper.recipe).colors[5])
+                    icon.position = CGPoint(x: node.size.width / 2, y: -CGFloat(m) * unit + 4)
+                }
+            }
+        }
+        for (id, node) in buildingNodes where !alive.contains(id) {
+            node.removeFromParent()
+            buildingNodes[id] = nil
+        }
+        // Only what is on screen is kept, once other levels or places pile up.
+        if buildingTextures.count > used.count + 32 { buildingTextures = buildingTextures.filter { used.contains($0.key) } }
+    }
 
     private func makeFood(_ id: Int) -> SKNode {
         let t = Sprites.shared.texture(world.foods.first { $0.id == id }?.kind ?? .fruta)
