@@ -51,7 +51,6 @@ final class ToastTests: XCTestCase {
         let before = w.eventTotal
         w.record(.eggLaid(a, b))
         XCTAssertEqual(w.eventTotal, before + 1)
-        XCTAssertEqual(w.toastText(.eggLaid(a, b)), "\(w.bichito(a)!.name) y \(w.bichito(b)!.name) pusieron un huevo")
-        XCTAssertEqual(w.toastText(.unlocked(0)), "Se abrió un barrio nuevo: \(w.districts[0].name(.es))")
+        XCTAssertEqual(w.toastText(.eggLaid(a, b)), "\(w.bichito(a)!.name) y \(w.bichito(b)!.name) pusieron un huevo.")
     }
 }

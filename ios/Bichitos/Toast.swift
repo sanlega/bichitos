@@ -42,22 +42,6 @@ struct Toasts {
 }
 
 extension World {
-    /// The toast line for a live event, in the world's language.
-    func toastText(_ e: WorldEvent) -> String {
-        let es = language == .es
-        func name(_ id: Int) -> String {
-            bichito(id)?.name ?? notes.first(where: { $0.bichito.id == id })?.bichito.name ?? "?"
-        }
-        func place(_ d: Int) -> String { d < districts.count ? districts[d].name(language) : "?" }
-        switch e {
-        case let .fought(a, b): return es ? "\(name(a)) y \(name(b)) se pelearon" : "\(name(a)) and \(name(b)) fought"
-        case let .fellInLove(a, b): return es ? "\(name(a)) y \(name(b)) se enamoraron" : "\(name(a)) and \(name(b)) fell in love"
-        case let .eggLaid(a, b): return es ? "\(name(a)) y \(name(b)) pusieron un huevo" : "\(name(a)) and \(name(b)) laid an egg"
-        case let .hatched(c): return es ? "Nació \(name(c))" : "\(name(c)) hatched"
-        case let .emigrated(a, d): return es ? "\(name(a)) se muda a \(place(d))" : "\(name(a)) is moving to \(place(d))"
-        case let .escaped(a): return es ? "\(name(a)) se escapó" : "\(name(a)) ran away"
-        case let .recovered(a): return es ? "\(name(a)) volvió a casa" : "\(name(a)) came back home"
-        case let .unlocked(d): return es ? "Se abrió un barrio nuevo: \(place(d))" : "A new district opened: \(place(d))"
-        }
-    }
+    /// The toast line for a live event: the news feed's line, without a count.
+    func toastText(_ e: WorldEvent) -> String { newsText(News.Item(event: e, date: date, place: .zero), language) }
 }
