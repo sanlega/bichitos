@@ -66,4 +66,54 @@ final class BarriosTests: XCTestCase {
         let opened = try XCTUnwrap(pen.open(now: start + 600).world, "fast-forward and summary don't trip on it")
         XCTAssertGreaterThanOrEqual(opened.bichitos.count + opened.notes.count, 20) // a pair may breed meanwhile
     }
+    // MARK: - Emigration
+
+    private func world(seed: UInt64, count: Int, all personality: Recipe.Personality? = nil) -> World {
+        var w = World(seed: seed, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var rng = SeededRNG(seed: seed)
+        for _ in 0..<count {
+            var r = Recipe.random(using: &rng)
+            if let p = personality { r.personality = p }
+            w.add(r)
+        }
+        return w
+    }
+
+    private func counts(_ w: World) -> [Int] {
+        var c = Array(repeating: 0, count: w.districts.count)
+        for b in w.bichitos { c[b.district] += 1 }
+        return c
+    }
+
+    func testBichitosDriftToTheirAffineDistrictWhenThereIsRoom() {
+        var w = world(seed: 29, count: 60) // 5 districts open, room for 70
+        XCTAssertEqual(w.districts.count, 5)
+        func atHome() -> Double {
+            let homed = w.bichitos.filter { b in w.districts.contains { $0.theme.affine == b.recipe.personality } }
+            return Double(homed.filter { w.districts[$0.district].theme.affine == $0.recipe.personality }.count) / Double(homed.count)
+        }
+        let before = atHome()
+        for _ in 0..<200 { w.emigrate() }
+        let after = atHome()
+        XCTAssertGreaterThan(after, before + 0.3, "before \(before), after \(after)")
+        XCTAssertGreaterThan(after, 0.7)
+        XCTAssertTrue(counts(w).allSatisfy { $0 <= World.capacity })
+    }
+
+    func testNeverEmigratesToAFullDistrict() {
+        var w = world(seed: 7, count: 60, all: .curiosa) // all want Villa Charco, which fits 14
+        for _ in 0..<200 {
+            w.emigrate()
+            XCTAssertTrue(counts(w).allSatisfy { $0 <= World.capacity }, "\(counts(w))")
+        }
+        XCTAssertEqual(counts(w)[1], World.capacity, "it fills up, then nobody else gets in")
+    }
+
+    func testNeverEmigratesToALockedDistrict() {
+        var w = world(seed: 8, count: 20, all: .dormilona) // Almohadilla (3) is still locked
+        XCTAssertEqual(w.districts.count, 2)
+        for _ in 0..<200 { w.emigrate() }
+        XCTAssertTrue(w.bichitos.allSatisfy { $0.district < 2 })
+        XCTAssertEqual(w.districts.count, 2)
+    }
 }
