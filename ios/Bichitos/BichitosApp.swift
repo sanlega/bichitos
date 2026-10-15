@@ -25,26 +25,34 @@ enum Terrarium {
     }
 
     static func screenshot() -> WorldScene {
-        WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, visible in
+        WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, v in
+            // Fixed slots: 5 rows, each tall enough for bubble + sprite + name, clear of the status bar and home indicator.
+            func at(_ fx: Double, _ row: Int) -> Vec {
+                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.925][row])
+            }
             var rng = SeededRNG(seed: 7)
-            spawn(9, in: visible, world: &w, rng: &rng)
-            // Show off a few faces and bubbles; long calm so encounters don't reshuffle them before the capture.
-            for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
+            let recipes = (0..<9).map { _ in Recipe.random(using: &rng) }
+            // The love pair shares row 1, just out of reach (so neither walks) and offset in height so the names don't collide.
+            let gap = recipes[2].radius + recipes[3].radius + 5
+            let mid = at(0.5, 1), side = Vec(0.85, 0.53) * (gap / 2)
+            let slots = [at(0.27, 3), at(0.27, 0), mid - side, mid + side, at(0.73, 0),
+                         at(0.27, 2), at(0.73, 2), at(0.73, 3), at(0.7, 4)]
+            for (r, p) in zip(recipes, slots) { w.add(r, at: p) }
+            w.dropFood(at: at(0.58, 2) + Vec(0, 8))
+            // Moods that don't walk, so nobody leaves its slot before the capture; long calm so encounters don't reshuffle them.
+            for i in w.bichitos.indices { w.bichitos[i].calm = 600; w.bichitos[i].enter(.held, for: 0) }
             w.bichitos[1].needs.sleep = 0.1
             w.bichitos[1].enter(.sleep, for: 600)
             w.bichitos[2].enter(.love, for: 600, target: w.bichitos[3].id)
             w.bichitos[3].enter(.love, for: 600, target: w.bichitos[2].id)
             w.bichitos[4].enter(.happy, for: 600)
-            w.bichitos[5].dizzy = 30
+            w.bichitos[5].enter(.wander, for: 600)
+            w.bichitos[5].dizzy = 30 // no steering while dizzy, and it starts still
             w.bichitos[6].needs.hunger = 0.2
             w.bichitos[7].needs = Bichito.Needs(hunger: 0.5, sleep: 0.4, affection: 0.2)
-            let center = visible.center
-            w.dropFood(at: Vec(center.x + 60, center.y + 40))
-            w.eggs.append(Egg(id: 9000, pos: Vec(center.x - 90, visible.y + visible.h - 140), parents: [],
-                              recipe: w.bichitos[0].recipe, hatchIn: 600))
+            w.eggs.append(Egg(id: 9000, pos: at(0.3, 4), parents: [], recipe: recipes[0], hatchIn: 600))
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
-            w.notes.append(Note(pos: Vec(center.x + 100, visible.y + visible.h - 150),
-                                text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
+            w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
         }
     }
 
