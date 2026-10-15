@@ -60,4 +60,22 @@ extension World {
             }
         }
     }
+
+    /// One `BarrioPicker` row per district theme. `missing` is nil when it is open; for a locked one it is how many
+    /// more bichitos open it (the next district opens when the population passes `capacity` per open district).
+    struct BarrioRow: Equatable {
+        let district: Int
+        let population: Int
+        let missing: Int?
+    }
+
+    var barrioRows: [BarrioRow] {
+        District.themes.indices.map { k in
+            BarrioRow(district: k, population: population(of: k),
+                      missing: k < districts.count ? nil : max(1, World.capacity * k + 1 - bichitos.count))
+        }
+    }
+
+    /// Bichitos whose home is `district` (whether or not they are walking there right now).
+    func population(of district: Int) -> Int { bichitos.filter { $0.district == district }.count }
 }

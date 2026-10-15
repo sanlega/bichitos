@@ -29,6 +29,10 @@ final class WorldScene: SKScene, ObservableObject {
     var onToastTap: ((WorldEvent) -> Void)?
     private var toasts = Toasts()
     private var seenEvents: Int
+    /// How many bichitos live in that district, for `BarrioPill`.
+    @Published private(set) var population = 0
+    /// The district the camera is looking at.
+    var here: Int { world.district(at: lens.center) }
 
     private var lens: Camera
     private var pinchFrom = 3.0
@@ -176,6 +180,14 @@ final class WorldScene: SKScene, ObservableObject {
 
     func startFollowing(_ id: Int) { follow.start(id) }
 
+    /// `BarrioPicker`: the camera travels to the middle of a district (with Reduce Motion, it is just there).
+    func travel(to district: Int) {
+        follow.stop()
+        let to = world.districts[district].rect.center
+        if UIAccessibility.isReduceMotionEnabled { lens.center = to } else { lens.travel(to: to) }
+        Haptics.tap()
+    }
+
     // MARK: - Long press → card
 
     /// Called with the id of the bichito under a long press.
@@ -206,12 +218,14 @@ final class WorldScene: SKScene, ObservableObject {
             world.tick()
             for b in world.bichitos { bichitoNodes[b.id]?.tick(b) }
         }
+        lens.glide(dt: dt)
         if let to = follow.target(in: world) { // glide, so the 20 Hz steps and the first trip don't jump
             lens.center = lens.center + (to - lens.center) * (1 - exp(-6 * dt))
         }
         fit()
-        let name = world.districts[world.district(at: lens.center)].name(world.language)
+        let name = world.districts[here].name(world.language), count = world.population(of: here)
         if name != title { title = name }
+        if count != population { population = count }
         for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) { toasts.push(e, at: currentTime) }
         seenEvents = world.eventTotal
         toasts.update(at: currentTime)

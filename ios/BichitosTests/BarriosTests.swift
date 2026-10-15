@@ -116,4 +116,41 @@ final class BarriosTests: XCTestCase {
         XCTAssertTrue(w.bichitos.allSatisfy { $0.district < 2 })
         XCTAssertEqual(w.districts.count, 2)
     }
+
+    /// BarrioPicker: every district, open ones with their population, locked ones with how many bichitos they still need.
+    func testPickerRows() {
+        var w = World(seed: 3, date: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(w.barrioRows.map(\.missing), [nil, 15, 29, 43, 57, 71, 85])
+        var rng = SeededRNG(seed: 3)
+        for _ in 0..<20 { w.add(Recipe.random(using: &rng)) }
+        let rows = w.barrioRows
+        XCTAssertEqual(rows.map(\.district), Array(0..<7))
+        XCTAssertEqual(rows.map(\.missing), [nil, nil, 9, 23, 37, 51, 65])
+        XCTAssertEqual(rows.map(\.population).reduce(0, +), 20)
+        XCTAssertEqual(rows[0].population, w.bichitos.filter { $0.district == 0 }.count)
+        XCTAssertEqual(rows[2...].map(\.population), [0, 0, 0, 0, 0])
+
+        // The count it shows is exactly what opens it.
+        for _ in 0..<9 { w.add(Recipe.random(using: &rng)) }
+        XCTAssertEqual(w.districts.count, 3)
+        XCTAssertNil(w.barrioRows[2].missing)
+        XCTAssertEqual(w.barrioRows[3].missing, 14)
+    }
+
+    /// Tapping a district: the camera springs there, lands exactly on it and a pan takes over.
+    func testCameraTravelsToADistrict() {
+        var c = Camera(center: Vec(500, 800), scale: 3)
+        let to = District(index: 1).rect.center
+        c.travel(to: to)
+        c.glide(dt: 0.1)
+        XCTAssertGreaterThan(c.center.x, 500)
+        XCTAssertLessThan(c.center.x, to.x + 50, "damping 0.85 barely overshoots")
+        for _ in 0..<120 { c.glide(dt: 1.0 / 60) }
+        XCTAssertNil(c.trip)
+        XCTAssertEqual(c.center, to)
+
+        c.travel(to: Vec(0, 0))
+        c.pan(by: Vec(1, 0))
+        XCTAssertNil(c.trip)
+    }
 }
