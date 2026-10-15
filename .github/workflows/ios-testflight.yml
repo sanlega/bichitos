@@ -69,8 +69,7 @@ jobs:
           MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
         run: |
           eval "$(ssh-agent -s)"
-          printf '%s
-' "$MATCH_DEPLOY_KEY" | ssh-add -
+          echo "$MATCH_DEPLOY_KEY" | ssh-add -
           mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
