@@ -1,18 +1,5 @@
 import SwiftUI
 
-/// DESIGN.md colour tokens for SwiftUI.
-extension Color {
-    static let mist = Color(uiColor: Ink.mist)
-    static let ink = Color(uiColor: Ink.ink)
-    static let inkDim = Color(uiColor: Ink.ink).opacity(0.55)
-    static let hairline = Color(uiColor: Ink.ink).opacity(0.1)
-    static let brand = Color(uiColor: Ink.accent)
-
-    init(_ c: RGBA) {
-        self.init(red: Double(c.r) / 255, green: Double(c.g) / 255, blue: Double(c.b) / 255)
-    }
-}
-
 /// A bichito alive outside the world: it breathes, blinks and hops when its recipe changes.
 /// Driven by its own little simulation (never by SwiftUI animations); pixels are whole squares, never smoothed.
 struct LiveSprite: View {

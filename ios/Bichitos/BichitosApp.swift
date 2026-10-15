@@ -7,6 +7,7 @@ struct BichitosApp: App {
             PenView { scene in
                 WorldView(scene: scene)
             }
+            .preferredColorScheme(.light) // the night comes from the world, not the system
         }
     }
 }
