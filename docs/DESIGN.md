@@ -100,6 +100,12 @@ el nivel más próximo con un muelle (`response 0.4, damping 0.8`).
 
 Los nombres, bocadillos e iconos de estado tienen tamaño fijo en pantalla: no crecen con el zoom.
 
+Nunca se tocan (`LabelLayout`, cada frame, solo lo que está en pantalla). Un nombre que choca se aparta
+hacia un lado o baja una o dos filas, sin alejarse de su bichito; si no cabe, se oculta. Entre dos
+bocadillos que chocan habla uno: el que ya está hablando y, si ninguno, el que lleva más rato esperando
+(empate: el más cercano al centro de la pantalla). El otro espera callado, con su icono, hasta 3 s.
+Los iconos de estado sí pueden juntarse.
+
 ### Capas
 
 De atrás adelante:
