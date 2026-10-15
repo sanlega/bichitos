@@ -70,6 +70,29 @@ final class FoodTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(Recipe.self, from: JSONEncoder().encode(recipe)).favorite, .macarron)
     }
 
+    func testFoodGridsAreValidPixelArt() {
+        for kind in Food.Kind.allCases {
+            // Every row drawn fits the canvas, so nothing is cut off silently.
+            XCTAssertEqual(kind.art.count, Food.canvas, "\(kind)")
+            XCTAssertTrue(kind.art.allSatisfy { $0.count == Food.canvas }, "\(kind)")
+            let g = kind.grid, colors = kind.palette.colors.count
+            var opaque = 0
+            for y in 0..<g.height {
+                for x in 0..<g.width where g[x, y] != 0 {
+                    opaque += 1
+                    XCTAssertLessThan(Int(g[x, y]), colors, "\(kind) bad index at \(x),\(y)")
+                    let alone = (-1...1).allSatisfy { dy in (-1...1).allSatisfy { dx in (dx == 0 && dy == 0) || g[x + dx, y + dy] == 0 } }
+                    XCTAssertFalse(alone, "\(kind) orphan at \(x),\(y)")
+                    // 1 px outline of the darkest tone: whatever touches the outside is index 1.
+                    let edge = [(1, 0), (-1, 0), (0, 1), (0, -1)].contains { g[x + $0.0, y + $0.1] == 0 }
+                    if edge { XCTAssertEqual(g[x, y], 1, "\(kind) not outlined at \(x),\(y)") }
+                }
+            }
+            XCTAssertGreaterThan(opaque, 40, "\(kind)")
+            XCTAssertTrue((0..<g.width).contains { g[$0, g.height - 1] != 0 }, "\(kind) rests on the bottom row")
+        }
+    }
+
     func testFavoriteHasLocalisedNames() {
         XCTAssertEqual(Food.Kind.macarron.name(.es), "macarrón")
         XCTAssertEqual(Food.Kind.croqueta.name(.en), "croquette")
