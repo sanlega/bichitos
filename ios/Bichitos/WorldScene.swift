@@ -25,7 +25,7 @@ final class WorldScene: SKScene, ObservableObject {
     @Published private(set) var title = ""
     /// The live event on the toast under the title, if any.
     @Published private(set) var toast: WorldEvent? = nil
-    /// Tapping the toast (#51 takes the camera there).
+    /// Tapping the toast: `WorldView` sends the camera to the story.
     var onToastTap: ((WorldEvent) -> Void)?
     private var toasts = Toasts()
     private var seenEvents: Int
@@ -181,10 +181,12 @@ final class WorldScene: SKScene, ObservableObject {
     func startFollowing(_ id: Int) { follow.start(id) }
 
     /// `BarrioPicker`: the camera travels to the middle of a district (with Reduce Motion, it is just there).
-    func travel(to district: Int) {
+    func travel(to district: Int) { travel(to: world.districts[district].rect.center) }
+
+    /// `NewsFeed` and `Toast`: the camera travels to where a story happened.
+    func travel(to place: Vec) {
         follow.stop()
-        let to = world.districts[district].rect.center
-        if UIAccessibility.isReduceMotionEnabled { lens.center = to } else { lens.travel(to: to) }
+        if UIAccessibility.isReduceMotionEnabled { lens.center = place } else { lens.travel(to: place) }
         Haptics.tap()
     }
 

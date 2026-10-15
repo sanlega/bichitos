@@ -64,6 +64,14 @@ enum Terrarium {
             }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
+            if CommandLine.arguments.contains("-screenshot-news") { // NewsFeed (#51): stories of different ages, oldest first
+                let b = w.bichitos.map(\.id)
+                for k in 0..<14 { w.news.add(.fought(b[4], b[5]), date: w.date - 3600 + Double(k * 60), place: at(0.5, 0)) }
+                w.news.add(.fellInLove(b[2], b[3]), date: w.date - 720, place: mid)
+                w.news.add(.escaped(ghost.id), date: w.date - 300, place: ghost.pos)
+                w.news.add(.eggLaid(b[2], b[3]), date: w.date - 120, place: mid)
+                w.news.add(.hatched(b[6]), date: w.date - 10, place: at(0.73, 2))
+            }
         }
     }
 
