@@ -625,16 +625,16 @@ struct World: Codable, Equatable {
     }
 
     /// Pairs sitting together on a banco: their love grows, and when the date is over they lay their egg (if they can)
-    /// and get up. Runs every tick after the moves, so it always catches the end before their clocks run out.
+    /// and get up. Every `lod` ticks (0.5 s) after the moves, so it always catches the end before their 2 s are up;
+    /// and it copies only the bench lovers: a catch-up runs it 14 400 times.
     private mutating func dates() {
-        guard bichitos.contains(where: { $0.bench != nil }) else { return }
-        let all = terrain.buildings
-        for i in bichitos.indices {
-            let a = bichitos[i]
+        guard tickCount % World.lod == 0 else { return }
+        for i in bichitos.indices where bichitos[i].bench != nil {
+            let a = bichitos[i], all = terrain.buildings
             guard let k = a.bench, let t = a.target, a.id < t, let j = index(of: t), bichitos[j].bench == k,
                   all.indices.contains(k), a.pos == World.seat(on: all[k], a.id, t),
                   bichitos[j].pos == World.seat(on: all[k], t, a.id) else { continue }
-            let aff = a.affinity[t] ?? 0, grow = World.dt * World.benchLove
+            let aff = a.affinity[t] ?? 0, grow = World.dt * Double(World.lod) * World.benchLove
             like(i, j, grow)
             like(j, i, grow)
             if aff < 0.6 && aff + grow >= 0.6 { record(.fellInLove(a.id, t)) }
