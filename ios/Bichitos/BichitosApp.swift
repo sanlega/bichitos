@@ -47,6 +47,10 @@ enum Terrarium {
             w.bichitos[5].dizzy = 600 // no steering while dizzy, and it starts still; long because the CI capture can come a minute late
             w.bichitos[6].needs.hunger = 0.2
             w.bichitos[7].needs = Bichito.Needs(hunger: 0.5, sleep: 0.4, affection: 0.2)
+            // Its card (-screenshot-card) shows friends, rivals, parents and a child.
+            w.bichitos[7].affinity = [w.bichitos[2].id: 0.8, w.bichitos[4].id: 0.4, w.bichitos[5].id: -0.6]
+            w.bichitos[7].parents = [w.bichitos[2].id, w.bichitos[3].id]
+            w.bichitos[6].parents = [w.bichitos[7].id]
             w.eggs.append(Egg(id: 9000, pos: at(0.3, 4), parents: [], recipe: recipes[0], hatchIn: 600))
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
