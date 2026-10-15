@@ -84,5 +84,13 @@ final class MaquetaTests: XCTestCase {
         w.bichitos[i].enter(.sleep, for: 60)
         w.bichitos[i].pos = door + Vec(0, 80)
         XCTAssertEqual(w.asleepInside, [:])
+        // Left at its door with the sim running, it stays inside until rested.
+        w.bichitos[i].pos = door
+        w.bichitos[i].needs.sleep = 0.1
+        w.bichitos[i].enter(.sleep, for: 600)
+        w.visibleRect = Rect(x: door.x - 200, y: door.y - 300, w: 400, h: 600)
+        for _ in 0..<200 { w.tick() }
+        XCTAssertEqual(w.bichitos[w.index(of: id)!].mood, .sleep)
+        XCTAssertEqual(w.asleepInside, [home: [id]], "pos \(w.bichitos[w.index(of: id)!].pos) door \(door)")
     }
 }
