@@ -166,9 +166,33 @@ final class WorldScene: SKScene, ObservableObject {
     /// Called with the bichito under a tap, or nil when the tap was on the ground (closes the peek).
     var onPeek: ((Int?) -> Void)?
 
+    /// The squash comes on every pet, not only when the mood changes, so a rub keeps it squishing.
     func pet(_ id: Int) {
-        world.pet(id)
+        if world.pet(id) { bichitoNodes[id]?.squish() }
         Haptics.tap()
+    }
+
+    /// VoiceOver «Lanzar».
+    func toss(_ id: Int) {
+        var rng = SystemRandomNumberGenerator()
+        world.toss(id, using: &rng)
+        Haptics.tap()
+    }
+
+    /// VoiceOver: one on-screen bichito, its body's frame in view points (y down).
+    struct Seen: Identifiable {
+        let id: Int
+        let label: String
+        let frame: CGRect
+    }
+
+    var onScreen: [Seen] {
+        guard let visible = world.visibleRect else { return [] }
+        return world.bichitos.filter { visible.contains($0.pos) }.map { b in
+            let r = CGFloat(b.recipe.radius) * unit
+            let c = CGPoint(x: CGFloat(b.pos.x - origin.x) * unit, y: CGFloat(b.pos.y - origin.y) * unit)
+            return Seen(id: b.id, label: b.voiceLabel, frame: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+        }
     }
 
     /// Drops its favourite food right next to it, to the side so it doesn't land under its body.
@@ -367,9 +391,9 @@ extension WorldScene {
         let p = t.location(in: view)
         let w = worldPoint(p)
         let target = world.bichito(at: w, pad: Double(12 / unit))
-        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode)
+        let reach = target.flatMap { world.bichito($0) }.map { $0.recipe.radius * Double(unit) + 12 } ?? 0
+        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode, reach: reach)
         finger = t
-        if let id = target, let b = world.bichito(id) { grabOffset = b.pos - w }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -377,9 +401,14 @@ extension WorldScene {
         let p = t.location(in: view)
         let action = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp)
         follow.after(action)
-        if case let .grab(id) = action {
+        switch action {
+        case let .grab(id):
+            // Taken where the finger is now, so it doesn't jump by the bit the finger moved before grabbing.
+            if let b = world.bichito(id) { grabOffset = b.pos - worldPoint(p) }
             world.grab(id)
             Haptics.tap()
+        case let .rub(id): pet(id)
+        default: break
         }
         touch = g
         guard g.isDrag else { return }
@@ -528,6 +557,9 @@ final class BichitoNode: SKNode {
             .foregroundColor: Ink.ink.withAlphaComponent(0.7),
         ])
     }
+
+    /// A happy squash: the spring bounces it back.
+    func squish() { spring.kick(-5) }
 
     /// Falls from `height` points above its feet, then squashes on landing and springs back.
     func dropIn(from height: CGFloat) {
