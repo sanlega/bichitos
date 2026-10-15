@@ -26,7 +26,9 @@ struct Pen {
     /// nil only when there is no save yet. A broken file throws, so the caller never overwrites it with a fresh world by accident.
     func load() throws -> Saved? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return try JSONDecoder().decode(Saved.self, from: Data(contentsOf: url))
+        var saved = try JSONDecoder().decode(Saved.self, from: Data(contentsOf: url))
+        saved.world.fitDistricts()
+        return saved
     }
 
     /// Loads the save and fast-forwards it to `now`. A save that won't load is moved aside, never overwritten.
