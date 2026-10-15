@@ -27,17 +27,7 @@ struct SimRNG: RandomNumberGenerator, Codable, Equatable {
     }
 }
 
-/// Districts sit side by side, left to right, in unlock order.
-struct District: Codable, Equatable {
-    static let namesEs = ["Villa Charco", "Monte Miga", "Barrio Pelusa", "Las Tostadas", "Rincón Grumo", "Valle Calcetín", "Puerto Fideo", "Colina Bostezo"]
-    static let namesEn = ["Puddle Town", "Crumb Hill", "Fluffville", "Toast Corner", "Lumpy Nook", "Sock Valley", "Noodle Harbor", "Yawn Hill"]
-
-    var index: Int
-    var rect: Rect { Rect(x: Double(index) * World.districtSize.x, y: 0, w: World.districtSize.x, h: World.districtSize.y) }
-    func name(_ language: Language) -> String { (language == .es ? District.namesEs : District.namesEn)[index] }
-}
-
-struct Food: Codable, Equatable { let id: Int; var pos: Vec }
+struct Food: Codable, Equatable { let id: Int; var pos: Vec; var kind = Kind.fruta } // kinds and favourites: Comida.swift
 struct Egg: Codable, Equatable { let id: Int; var pos: Vec; var parents: [Int]; var recipe: Recipe; var hatchIn: Double }
 /// What an escaped bichito leaves behind. It keeps the bichito so food at the note can bring it back.
 struct Note: Codable, Equatable { var pos: Vec; var text: String; var bichito: Bichito }
@@ -74,8 +64,8 @@ struct World: Codable, Equatable {
     static let hz = 20.0
     static let dt = 1 / hz
     static let districtSize = Vec(1000, 1600)
-    static let capacity = 12              // bichitos per district before the next one unlocks
-    static var maxPopulation: Int { capacity * District.namesEs.count }
+    static let capacity = 14              // bichitos per district before the next one unlocks
+    static var maxPopulation: Int { capacity * District.themes.count }
     static let lod = 10                   // off-screen bichitos move every 10 ticks (2 Hz) with a 10× step
     static let encounterEvery = 20        // ticks between encounter checks; doubled when nobody watches
     static let hungerSpan = 36 * 3600.0   // seconds from full to starving
@@ -98,13 +88,14 @@ struct World: Codable, Equatable {
     var notes: [Note] = []
     var districts = [District(index: 0)]
     var events: [WorldEvent] = []
+    var newsLog: News? = nil // read it through `news` (Noticias.swift); optional so saves from before it still load
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
     var visibleRect: Rect? = nil
     private var pending = 0.0
 
     private enum CodingKeys: String, CodingKey {
-        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, events, rng
+        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, events, newsLog, rng
     }
 
     init(seed: UInt64, date: Date = Date(), language: Language = .es) {
@@ -149,7 +140,7 @@ struct World: Codable, Equatable {
 
     /// Opens the next district once the population outgrows the current ones, so there is always room.
     mutating func unlockIfCrowded(extra: Int = 0) {
-        guard bichitos.count + extra > World.capacity * districts.count, districts.count < District.namesEs.count else { return }
+        guard bichitos.count + extra > World.capacity * districts.count, districts.count < District.themes.count else { return }
         districts.append(District(index: districts.count))
         record(.unlocked(districts.count - 1))
     }
@@ -195,12 +186,12 @@ struct World: Codable, Equatable {
         bichitos[i].dizzy = min(3, v.length / 300)
     }
 
-    /// Hungry bichitos run to it. Dropped next to a goodbye note, it brings the runaway back.
+    /// Hungry bichitos run to it. Its favourite dropped next to a goodbye note brings the runaway back.
     @discardableResult
-    mutating func dropFood(at p: Vec) -> Int {
-        if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 }) { recover(n) }
+    mutating func dropFood(at p: Vec, kind: Food.Kind = .fruta) -> Int {
+        if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 && $0.bichito.favorite == kind }) { recover(n) }
         let id = newId()
-        foods.append(Food(id: id, pos: clamp(p, 4)))
+        foods.append(Food(id: id, pos: clamp(p, 4), kind: kind))
         for i in bichitos.indices where bichitos[i].needs.hunger < 0.7 && bichitos[i].mood.isFree {
             bichitos[i].enter(.eat, for: 30, target: id)
         }
@@ -307,7 +298,7 @@ struct World: Codable, Equatable {
             if let f = foods.first(where: { $0.id == b.target }) {
                 let d = f.pos - b.pos
                 // Reachable within this step counts as there, so the 2 Hz off-screen step never overshoots the food.
-                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f.id, &b) } else { dir = d.unit; pace = 1.3 }
+                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f, &b) } else { dir = d.unit; pace = 1.3 }
             } else {
                 b.timer = 0
             }
@@ -358,9 +349,9 @@ struct World: Codable, Equatable {
         }
     }
 
-    private mutating func eat(_ food: Int, _ b: inout Bichito) {
-        foods.removeAll { $0.id == food }
-        b.needs.hunger = 1
+    private mutating func eat(_ food: Food, _ b: inout Bichito) {
+        foods.removeAll { $0.id == food.id }
+        b.eat(food.kind)
         b.enter(.happy, for: 2)
     }
 
@@ -522,8 +513,9 @@ struct World: Codable, Equatable {
         }
     }
 
-    /// Now and then a bichito moves to the district where its friends (and its own kind) live.
-    private mutating func emigrate() {
+    /// Now and then a bichito moves to the district where its friends (and its own kind) live, or the one affine to it.
+    /// Only unlocked districts are in `districts`, and full ones are skipped.
+    mutating func emigrate() {
         guard districts.count > 1 else { return }
         for i in bichitos.indices where bichitos[i].mood == .wander && roll() < 0.05 {
             let b = bichitos[i]
@@ -533,10 +525,14 @@ struct World: Codable, Equatable {
                 score[o.district] += (b.affinity[o.id] ?? 0) + (o.recipe.personality == b.recipe.personality ? 0.3 : 0)
                 count[o.district] += 1
             }
+            let affine = districts.map { $0.theme.affine == b.recipe.personality }
             func value(_ d: Int) -> Double {
-                (count[d] == 0 ? 0 : score[d] / Double(count[d])) - Double(count[d]) / Double(World.capacity) * 0.3
+                let friends = count[d] == 0 ? 0 : score[d] / Double(count[d])
+                let crowd = Double(count[d]) / Double(World.capacity) * 0.3
+                return friends - crowd + (affine[d] ? 0.4 : 0)
             }
-            guard let best = districts.indices.max(by: { value($0) < value($1) }),
+            let open = districts.indices.filter { $0 == b.district || count[$0] < World.capacity }
+            guard let best = open.max(by: { value($0) < value($1) }),
                   best != b.district, value(best) > value(b.district) + 0.25 else { continue }
             bichitos[i].district = best
             record(.emigrated(b.id, best))
@@ -572,6 +568,7 @@ struct World: Codable, Equatable {
 
     private mutating func record(_ e: WorldEvent) {
         events.append(e)
+        report(e)
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
     }
 

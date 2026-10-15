@@ -8,6 +8,7 @@ struct WorldView: View {
     @State private var foodMode = false
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
+    @State private var peek: Int? // id of the bichito whose peek is up
 
     var body: some View {
         ZStack {
@@ -34,11 +35,17 @@ struct WorldView: View {
             .padding(.top, 8)
             .allowsHitTesting(false)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
-            VStack {
+            VStack(spacing: 8) {
                 Spacer()
+                if let id = peek {
+                    BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
+                        .padding(.horizontal, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
                     .padding(.bottom, 16)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: peek)
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
@@ -50,7 +57,11 @@ struct WorldView: View {
         }
         .onAppear {
             scene.onLongPress = { card = $0 }
+            scene.onPeek = { peek = $0 }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
+            if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { peek = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
+            }
             if CommandLine.arguments.contains("-screenshot-card") {
                 // After the staged world is populated: the one with friends, rivals and family.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
