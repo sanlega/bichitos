@@ -306,7 +306,8 @@ struct World: Codable, Equatable {
         case .eat:
             if let f = foods.first(where: { $0.id == b.target }) {
                 let d = f.pos - b.pos
-                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f.id, &b) } // reachable this step: no overshooting at 2 Hz else { dir = d.unit; pace = 1.3 }
+                // Reachable within this step counts as there, so the 2 Hz off-screen step never overshoots the food.
+                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f.id, &b) } else { dir = d.unit; pace = 1.3 }
             } else {
                 b.timer = 0
             }
