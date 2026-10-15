@@ -134,14 +134,21 @@ extension Terrain {
         return Rect(x: r.x, y: r.y + r.h - depth, w: r.w, h: depth)
     }
 
-    /// The base plus the gap kept around it (8 u around buildings, 4 u around decoration), and a casita's doorstep.
-    private static func room(_ r: Rect, _ kind: Building.Kind) -> Rect {
-        let b = base(r, kind), pad = kind.isDecoration ? 8.0 : 16.0
-        return Rect(x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad + (kind == .casita ? 32 : 0))
+    /// The base and a casita's doorstep: the ground that must be plain.
+    private static func ground(_ r: Rect, _ kind: Building.Kind) -> Rect {
+        let b = base(r, kind)
+        return Rect(x: b.x, y: b.y, w: b.w, h: b.h + (kind == .casita ? 32 : 0))
     }
 
-    /// The monument tries the centre first; then random spots on the grid, and for buildings (never decoration)
-    /// a full scan, so a district always gets its 7 casitas if they fit at all.
+    /// `ground` plus the gap kept around it, 8 u around buildings and 4 u around decoration: what no other room overlaps.
+    private static func room(_ r: Rect, _ kind: Building.Kind) -> Rect {
+        let g = ground(r, kind), pad = kind.isDecoration ? 8.0 : 16.0
+        return Rect(x: g.x - pad, y: g.y - pad, w: g.w + 2 * pad, h: g.h + 2 * pad)
+    }
+
+    /// The monument tries the centre first. Buildings then scan the whole grid from a random spot, so a district always
+    /// gets its 7 casitas if they fit at all (random tries leave gaps too small for the last ones); decoration only tries
+    /// random spots.
     private func findRoom(_ size: Vec, _ kind: Building.Kind, in district: Rect, avoiding rooms: [Rect],
                           _ rng: inout SeededRNG) -> Rect? {
         let s = Terrain.cell, inset = 40.0
@@ -153,19 +160,25 @@ extension Terrain {
         func fits(_ r: Rect) -> Bool {
             let room = Terrain.room(r, kind)
             guard room.y + room.h <= district.y + district.h, !rooms.contains(where: { $0.intersects(room) }) else { return false }
-            return plain(room, paths: kind == .monument)
+            return plain(Terrain.ground(r, kind), paths: kind == .monument)
         }
         if kind == .monument {
             let c = district.center
             let centre = at(Int(((c.x - size.x / 2 - origin.x) / s).rounded()), Int(((c.y - size.y / 2 - origin.y) / s).rounded()))
             if fits(centre) { return centre }
         }
-        for _ in 0..<300 {
-            let r = at(Int.random(in: c0...c1, using: &rng), Int.random(in: r0...r1, using: &rng))
+        if kind.isDecoration {
+            for _ in 0..<300 {
+                let r = at(Int.random(in: c0...c1, using: &rng), Int.random(in: r0...r1, using: &rng))
+                if fits(r) { return r }
+            }
+            return nil
+        }
+        let w = c1 - c0 + 1, n = w * (r1 - r0 + 1), k0 = Int.random(in: 0..<n, using: &rng)
+        for k in 0..<n {
+            let r = at(c0 + (k0 + k) % n % w, r0 + (k0 + k) % n / w)
             if fits(r) { return r }
         }
-        guard !kind.isDecoration else { return nil }
-        for r in r0...r1 { for c in c0...c1 where fits(at(c, r)) { return at(c, r) } }
         return nil
     }
 
