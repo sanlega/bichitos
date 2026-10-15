@@ -14,6 +14,12 @@ y observas cómo se enamoran, se pelean, se persiguen y se escapan.
 ![Swift 5.10](https://img.shields.io/badge/Swift-5.10-FF6B4A)
 ![Sin dependencias](https://img.shields.io/badge/dependencias-0-9C8FE0)
 
+<br>
+
+<img src="docs/images/shot-world.png" width="240" alt="Plaza Mayor con bichitos durmiendo, enamorados y comiendo">&nbsp;
+<img src="docs/images/shot-editor.png" width="240" alt="El editor de bichitos">&nbsp;
+<img src="docs/images/shot-card.png" width="240" alt="La ficha de un bichito con necesidades, amigos y rivales">
+
 </div>
 
 ---
@@ -29,6 +35,7 @@ de terceros.
 - [Qué es](#qué-es)
 - [El bichito: una receta](#el-bichito-una-receta)
 - [El mundo](#el-mundo)
+- [Diseño: "Terrario"](#diseño-terrario)
 - [Cómo se juega](#cómo-se-juega)
 - [Cómo está hecho](#cómo-está-hecho)
 - [Desarrollo](#desarrollo)
@@ -50,6 +57,11 @@ de terceros.
 Cada bichito es una **receta**: unos pocos genes que el motor convierte en píxeles, comportamiento y voz.
 Solo se guarda la receta; todo lo demás se regenera.
 
+<p align="center">
+  <img src="docs/images/gallery.png" width="640" alt="Cien bichitos generados con semillas distintas">
+  <br><sub>100 semillas, 100 bichitos. Ninguno está dibujado a mano.</sub>
+</p>
+
 | Gen | Valores |
 |---|---|
 | Cuerpo | gota, alubia, torre, cuadradito, pera, estrella blanda |
@@ -62,11 +74,27 @@ Solo se guarda la receta; todo lo demás se regenera.
 
 La personalidad se ve a simple vista: la nerviosa lleva pelos de punta, la territorial cuernitos,
 la hiperactiva antenas, la romántica mofletes, la curiosa una antena con bolita y la dormilona va
-con el cuerpo caído. Las necesidades también: con hambre adelgaza y pierde color; bien cuidado,
-está rechoncho y brillante.
+con el cuerpo caído.
+
+<p align="center">
+  <img src="docs/images/bodies.png" width="400" alt="Los seis cuerpos combinados con los cinco tipos de ojos">
+  <br><sub>Seis cuerpos × cinco ojos.</sub>
+</p>
 
 Las nueve **expresiones** salen de variar ojos y boca, no de dibujos: normal, parpadeo, dormido,
 enamorado, enfadado, asustado, hambriento, contento y mareado.
+
+<p align="center">
+  <img src="docs/images/expressions.png" width="640" alt="Seis bichitos con sus nueve expresiones">
+  <br><sub>De izquierda a derecha: normal, parpadeo, dormido, enamorado, enfadado, asustado, hambriento, contento, mareado.</sub>
+</p>
+
+Las necesidades también se ven: con hambre adelgaza y pierde color; bien cuidado, está rechoncho y brillante.
+
+<p align="center">
+  <img src="docs/images/palettes.png" width="760" alt="Las doce paletas, bien cuidados arriba y descuidados abajo">
+  <br><sub>Las 12 paletas. Abajo, los mismos bichitos descuidados.</sub>
+</p>
 
 ## El mundo
 
@@ -90,6 +118,36 @@ barrio de su personalidad y hacia sus amigos.
 
 Hay **5 comidas** en pixel art: fruta, galleta, seta, croqueta y macarrón. Cada bichito tiene una
 favorita que heredan sus crías.
+
+<p align="center">
+  <img src="docs/images/shot-zoom-street.png" width="240" alt="Zoom de calle: nombres sobre cada bichito">&nbsp;
+  <img src="docs/images/shot-peek.png" width="240" alt="Al tocar un bichito: acariciar, dar de comer, seguir, ficha">&nbsp;
+  <img src="docs/images/shot-news.png" width="240" alt="Noticias del terrario: nacimientos, huevos, escapadas y peleas">
+  <br><sub>Zoom de calle · tocar un bichito · las noticias del terrario</sub>
+</p>
+
+## Diseño: "Terrario"
+
+Bichitos en pixel art, crujientes y llenos de color, viviendo en un mundo moderno, suave y casi
+vacío. El contraste es intencionado: el mundo es un terrario de cristal limpio y los bichitos son lo
+único pixelado.
+
+1. **Los bichitos primero.** El mundo y la interfaz son tranquilos y de poco contraste; el color
+   fuerte y el pixel art son solo de los bichitos.
+2. **Píxeles honestos.** Un píxel del bichito es siempre un cuadrado entero en pantalla: nunca se
+   suaviza, nunca se escala a tamaños no enteros, nunca se rota.
+3. **Exagerar con píxeles.** El squash & stretch, los saltos y las expresiones generan píxeles
+   nuevos, no deforman la textura.
+4. **Se lee sin menús.** Lo que siente un bichito se ve en su cara, su forma y su burbuja.
+5. **Zona del pulgar.** Las acciones viven en una bandeja inferior.
+
+<p align="center">
+  <img src="docs/images/terrario.png" width="760" alt="Colores del sistema Terrario: terreno, interfaz y tintes de los barrios">
+  <br><sub>Terreno · interfaz · tintes de los barrios</sub>
+</p>
+
+Regla rápida: si un bichito se lo come, lo pone o le sale de la cabeza, es pixel art. Si estaba ahí
+antes que él, es suave.
 
 ## Cómo se juega
 
