@@ -5,7 +5,7 @@ import Foundation
 /// Holds its scratch buffers so a frame with 40 bichitos on screen allocates nothing once warmed up.
 struct LabelLayout {
     /// Minimum clear space between two labels, in points.
-    static let gap: CGFloat = 2
+    static let gap: CGFloat = 6 // 2 pt still read as one word on screen
     /// Most spots tried for one name before it hides.
     private static let tries = 12
 
