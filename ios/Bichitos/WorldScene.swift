@@ -143,7 +143,10 @@ final class WorldScene: SKScene, ObservableObject {
         case .changed:
             zoom { $0.zoom(to: pinchFrom * Double(g.scale), around: focus, screenSize) }
         case .ended, .cancelled, .failed:
-            lens.release(around: focus)
+            if UIAccessibility.isReduceMotionEnabled { // no spring: straight to the level
+                let to = lens.level.scale
+                zoom { $0.zoom(to: to, around: focus, screenSize) }
+            } else { lens.release(around: focus) }
         default: break
         }
     }
@@ -175,14 +178,14 @@ final class WorldScene: SKScene, ObservableObject {
     /// The squash comes on every pet, not only when the mood changes, so a rub keeps it squishing.
     func pet(_ id: Int) {
         if world.pet(id) { bichitoNodes[id]?.squish() }
-        Haptics.tap()
+        Haptics.fire(.pet)
     }
 
     /// VoiceOver «Lanzar».
     func toss(_ id: Int) {
         var rng = SystemRandomNumberGenerator()
         world.toss(id, using: &rng)
-        Haptics.tap()
+        Haptics.fire(.toss)
     }
 
     /// VoiceOver: one on-screen bichito, its body's frame in view points (y down).
@@ -197,7 +200,7 @@ final class WorldScene: SKScene, ObservableObject {
         return world.bichitos.filter { visible.contains($0.pos) }.map { b in
             let r = CGFloat(b.recipe.radius) * unit
             let c = CGPoint(x: CGFloat(b.pos.x - origin.x) * unit, y: CGFloat(b.pos.y - origin.y) * unit)
-            return Seen(id: b.id, label: b.voiceLabel, frame: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+            return Seen(id: b.id, label: b.voiceLabel(world.language), frame: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
         }
     }
 
@@ -258,7 +261,10 @@ final class WorldScene: SKScene, ObservableObject {
         let name = world.districts[here].name(world.language), count = world.population(of: here)
         if name != title { title = name }
         if count != population { population = count }
-        for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) { toasts.push(e, at: currentTime) }
+        for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) {
+            toasts.push(e, at: currentTime)
+            switch e { case .hatched, .unlocked: Haptics.fire(.success); default: break }
+        }
         seenEvents = world.eventTotal
         toasts.update(at: currentTime)
         if toasts.current != toast { toast = toasts.current }
@@ -532,6 +538,7 @@ extension WorldScene {
             var v = g.velocity(at: t.timestamp) * Double(1 / unit)
             if v.length > 2000 { v = v.unit * 2000 }
             world.release(id, velocity: v)
+            Haptics.fire(.toss)
         }
         touch = nil
         finger = nil
@@ -551,17 +558,12 @@ extension WorldScene {
     }
 }
 
-@MainActor
-enum Haptics {
-    private static let light = UIImpactFeedbackGenerator(style: .light)
-    static func tap() { light.impactOccurred() }
-}
-
 /// One bichito on screen: sprite (with its pixel shadow), name under it, state icon or phrase bubble over it.
 /// Name, icon and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
-    private let label = SKLabelNode()
+    /// The name in the pixel font (DESIGN.md "Tipografía"): ×2 at Calle, ×3 at Cerca.
+    private let label = SKSpriteNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
     /// The pixel state icon, bare over the head (DESIGN.md "Los dos mundos": no soft bubble around pixel art).
@@ -586,6 +588,7 @@ final class BichitoNode: SKNode {
         didSet {
             guard level != oldValue else { return }
             label.isHidden = !level.showsWords
+            sizeLabel()
             if talk != nil { talk?.shown = -1 } else { show(icon: shownIcon) } // redrawn for the new level
         }
     }
@@ -610,7 +613,7 @@ final class BichitoNode: SKNode {
         addChild(sprite)
 
         show(name: b.name)
-        label.verticalAlignmentMode = .top
+        label.anchorPoint = CGPoint(x: 0.5, y: 1)
         label.zPosition = 50
         label.isHidden = !level.showsWords
         addChild(label)
@@ -660,11 +663,14 @@ final class BichitoNode: SKNode {
 
     private func show(name: String) {
         shownName = name
-        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
-        label.attributedText = NSAttributedString(string: name, attributes: [
-            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
-            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
-        ])
+        label.texture = Sprites.shared.texture(name: name)
+        sizeLabel()
+    }
+
+    private func sizeLabel() {
+        guard let size = label.texture?.size() else { return }
+        let k: CGFloat = level == .close ? 3 : 2
+        label.size = CGSize(width: size.width * k, height: size.height * k)
     }
 
     /// A happy squash: the spring bounces it back.
@@ -681,7 +687,10 @@ final class BichitoNode: SKNode {
                 let k = min(Double(t) / fall, 1)
                 node.position.y = (height * CGFloat(1 - k * k)).rounded()
             },
-            .run { [weak self] in self?.spring.kick(-8) },
+            .run { [weak self] in
+                self?.spring.kick(-8)
+                MainActor.assumeIsolated { Haptics.fire(.land) } // SpriteKit runs actions on the main thread
+            },
         ]))
     }
 

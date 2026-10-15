@@ -42,7 +42,8 @@ struct BarrioPicker: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 Text(es ? "Barrios" : "Districts")
-                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .font(.system(.title3, design: .rounded, weight: .heavy))
+                    .accessibilityAddTraits(.isHeader)
                     .padding(.bottom, 8)
                 ForEach(scene.world.barrioRows, id: \.theme) { row in
                     let theme = District.themes[row.theme]
@@ -58,27 +59,27 @@ struct BarrioPicker: View {
                                 .overlay {
                                     if row.place == nil {
                                         Image(systemName: "lock.fill")
-                                            .font(.system(size: 17, weight: .semibold))
+                                            .font(.system(.body, weight: .semibold))
                                             .foregroundStyle(Color.ink.opacity(0.6))
                                     }
                                 }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(language == .es ? theme.es : theme.en)
-                                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                    .font(.system(.body, design: .rounded, weight: .heavy))
                                     .foregroundStyle(row.place != nil ? Color.ink : Color.inkDim)
                                 Text(BarrioPicker.affinity(theme.affine, es: es))
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                    .font(.system(.footnote, design: .rounded, weight: .medium))
                                     .foregroundStyle(Color.inkDim)
                             }
                             Spacer(minLength: 8)
                             if row.place != nil {
                                 Text("\(row.population)/\(World.capacity)")
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
                                     .monospacedDigit()
                             } else if let affine = theme.affine {
                                 // How affine the population is to it: the most affine one opens next.
                                 Text("\(row.fans) \(BarrioPicker.name(affine, es: es, count: row.fans))")
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                    .font(.system(.footnote, design: .rounded, weight: .medium))
                                     .foregroundStyle(Color.inkDim)
                             }
                         }
@@ -95,7 +96,7 @@ struct BarrioPicker: View {
                 if let n = scene.world.bichitosToNextDistrict {
                     Text(es ? "Con \(n) \(n == 1 ? "bichito" : "bichitos") más se abre un barrio nuevo: el más afín a tus bichitos."
                             : "\(n) more \(n == 1 ? "bichito opens" : "bichitos open") a new district: the one your bichitos like best.")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
                         .foregroundStyle(Color.inkDim)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 12)
