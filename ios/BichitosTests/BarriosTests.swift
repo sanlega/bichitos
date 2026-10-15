@@ -232,4 +232,31 @@ final class BarriosTests: XCTestCase {
         c.pan(by: Vec(1, 0))
         XCTAssertNil(c.trip)
     }
+
+    /// Mapa level: every locked district is a dashed outline at its place in the ring; only the one that opens next says how many are missing.
+    func testLockedOutlinesOnTheMap() {
+        var w = world(seed: 9, count: 5, all: .dormilona)
+        let locked = w.lockedOutlines
+        XCTAssertEqual(locked.map(\.theme), [1, 2, 3, 4, 5, 6])
+        XCTAssertEqual(locked.map(\.rect), Array(w.layout[1...]))
+        XCTAssertEqual(locked.filter { $0.missing != nil }.map(\.theme), [3], "Almohadilla, the dormilonas' district")
+        XCTAssertEqual(locked.first { $0.theme == 3 }?.missing, 10)
+        w.unlock(3)
+        XCTAssertFalse(w.lockedOutlines.map(\.theme).contains(3))
+        for t in [1, 2, 4, 5, 6] { w.unlock(t) }
+        XCTAssertEqual(w.lockedOutlines, [])
+    }
+
+    /// Mapa level: each bichito is a dot of its palette's base colour.
+    func testMapDotIsThePaletteBase() {
+        var rng = SeededRNG(seed: 4)
+        var r = Recipe.random(using: &rng)
+        var seen = Set<RGBA>()
+        for i in 0..<Recipe.paletteCount {
+            r.palette = i
+            XCTAssertEqual(Look.dot(r), Palette.all[i].colors[3])
+            seen.insert(Look.dot(r))
+        }
+        XCTAssertEqual(seen.count, Recipe.paletteCount, "every palette its own dot")
+    }
 }

@@ -78,8 +78,8 @@ jobs:
           xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-talk -screenshot-zoom 5
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/talk.png
-          # Same world at other zoom levels (#30): Calle (5 pt per u) and Mapa (1 pt per u).
-          for zoom in 5:street 1:map; do
+          # Same world at other zoom levels (#30): Calle (5 pt per u) and Mapa (0.28 pt per u).
+          for zoom in 5:street 0.28:map; do
             xcrun simctl terminate "$SIM" com.santilega.bichitos || true
             xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-zoom "${zoom%%:*}"
             sleep 6

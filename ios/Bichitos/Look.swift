@@ -7,6 +7,9 @@ enum Look {
     /// Wellbeing is cached in 4 steps: 0, 1/3, 2/3, 1.
     static let wellbeingSteps = 3
 
+    /// At the Mapa level a bichito is a dot of its palette's base colour.
+    static func dot(_ recipe: Recipe) -> RGBA { Palette.of(recipe).colors[3] }
+
     static func squashLevel(_ squash: Double) -> Int {
         let i = Int(((squash - 0.7) / 0.1).rounded())
         return min(max(i, 0), squashLevels.count - 1)
