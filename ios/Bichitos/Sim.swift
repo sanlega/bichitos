@@ -266,12 +266,13 @@ struct World: Codable, Equatable {
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
+        let walls = bounds // once per tick, not per body: districts only unlock after the moves
         if watched {
             for i in bichitos.indices {
                 let visible = isVisible(bichitos[i].pos)
                 if !visible && (tickCount + i) % World.lod != 0 { continue }
                 let u0 = Profile.now()
-                update(i, visible ? World.dt : World.dt * Double(World.lod))
+                update(i, visible ? World.dt : World.dt * Double(World.lod), walls)
                 Profile.add(1, u0)
             }
         } else {
@@ -280,7 +281,7 @@ struct World: Codable, Equatable {
             var i = (lod - tickCount % lod) % lod
             while i < bichitos.count {
                 let u0 = Profile.now()
-                update(i, h)
+                update(i, h, walls)
                 Profile.add(1, u0)
                 i += lod
             }
@@ -332,7 +333,7 @@ struct World: Codable, Equatable {
 
     // MARK: - Brain and body
 
-    private mutating func update(_ i: Int, _ h: Double) {
+    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect) {
         var b = bichitos[i]
         guard b.mood != .held else { return }
         let r = b.recipe
@@ -401,7 +402,7 @@ struct World: Codable, Equatable {
             b.vel = b.vel + (dir * (r.speed * pace) - b.vel) * min(1, 6 * h)
         }
         b.pos = b.pos + b.vel * h
-        bounce(&b)
+        bounce(&b, walls)
         if b.timer <= 0 { decide(&b) }
         bichitos[i] = b
     }
@@ -423,9 +424,8 @@ struct World: Codable, Equatable {
         b.enter(.happy, for: 2)
     }
 
-    private func bounce(_ b: inout Bichito) {
+    private func bounce(_ b: inout Bichito, _ s: Rect) {
         let r = b.recipe.radius
-        let s = bounds
         let x0 = s.x + r, x1 = s.x + s.w - r, y0 = s.y + r, y1 = s.y + s.h - r
         if b.pos.x < x0 { b.pos.x = x0; b.vel.x = abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
         if b.pos.x > x1 { b.pos.x = x1; b.vel.x = -abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
