@@ -108,7 +108,7 @@ struct Terrain {
 
     /// A district's dominant terrain as ground, the patches mixed into it, and its obstacle (nil: none at all).
     /// Plaza Mayor stays clear: sand around the fountain where every path starts.
-    private static func look(_ t: District.Terrain) -> (base: Cell, other: Cell, obstacle: Cell?, threshold: Double) {
+    static func look(_ t: District.Terrain) -> (base: Cell, other: Cell, obstacle: Cell?, threshold: Double) {
         switch t {
         case .sandStar: return (.sand, .meadow, nil, 1)
         case .puddles: return (.meadow, .sand, .water, 0.6)
@@ -140,6 +140,106 @@ struct Terrain {
         let ab = b - a, ap = p - a
         let t = min(1, max(0, (ap.x * ab.x + ap.y * ab.y) / (ab.x * ab.x + ab.y * ab.y)))
         return (ap - ab * t).length
+    }
+}
+
+// MARK: - Outlines for painting
+
+extension Terrain {
+    /// Round kernel 2.5 cells wide, weight (1 - d²/R²)²: wide enough that a lone 4×4 blob comes out a circle of radius ≈ 16 u.
+    private static let kernel: [(dc: Int, dr: Int, w: Double)] = (-2...2).flatMap { dr in
+        (-2...2).compactMap { dc -> (dc: Int, dr: Int, w: Double)? in
+            let d2 = Double(dc * dc + dr * dr) / 6.25
+            return d2 < 1 ? (dc, dr, (1 - d2) * (1 - d2)) : nil
+        }
+    }
+
+    /// Smooth closed outlines, in world units, around the cells where `mask` is true (row-major, `cols` × `rows`,
+    /// cell (0, 0)'s top-left corner at `origin`). nil cells are unknown (under a path, or under something painted
+    /// on top) and take their neighbours' value; cells outside the grid are false.
+    /// The mask is blurred with `kernel` (normalised over the known cells), then marching squares draws the 0.5 line
+    /// through the cell centres: long straight runs stay on the cell edges, corners round off, specks under 3×3 vanish.
+    /// Loops of an even-odd fill: a hole is just another loop inside.
+    static func outlines(_ mask: [Bool?], cols: Int, rows: Int, origin: Vec) -> [[Vec]] {
+        // The field at each cell centre, with a ring of zeros around so every line closes.
+        let w = cols + 2, h = rows + 2
+        var f = [Double](repeating: 0, count: w * h)
+        for r in 0..<rows {
+            for c in 0..<cols {
+                var sum = 0.0, total = 0.0
+                for k in kernel {
+                    let x = c + k.dc, y = r + k.dr
+                    guard x >= 0, y >= 0, x < cols, y < rows else { total += k.w; continue }
+                    guard let m = mask[y * cols + x] else { continue }
+                    total += k.w
+                    if m { sum += k.w }
+                }
+                f[(r + 1) * w + c + 1] = total > 0 ? sum / total : 0
+            }
+        }
+        func inside(_ i: Int, _ j: Int) -> Bool { f[j * w + i] >= 0.5 }
+        // A crossing is named by its grid edge: 2k for the one from node k to the right, 2k + 1 for the one down.
+        func point(_ e: Int) -> Vec {
+            let k = e / 2, i = k % w, j = k / w, q = e % 2 == 0 ? k + 1 : k + w
+            let t = (0.5 - f[k]) / (f[q] - f[k])
+            let x = Double(i) + (e % 2 == 0 ? t : 0), y = Double(j) + (e % 2 == 0 ? 0 : t)
+            return Vec(origin.x + (x - 0.5) * cell, origin.y + (y - 0.5) * cell)
+        }
+        var segments: [(Int, Int)] = []
+        for j in 0..<(h - 1) {
+            for i in 0..<(w - 1) {
+                let a = inside(i, j), b = inside(i + 1, j), c = inside(i + 1, j + 1), d = inside(i, j + 1)
+                let top = 2 * (j * w + i), left = top + 1, bottom = 2 * ((j + 1) * w + i), right = 2 * (j * w + i + 1) + 1
+                let crossed = [(a != b, top), (b != c, right), (c != d, bottom), (d != a, left)].filter { $0.0 }.map { $0.1 }
+                if crossed.count == 2 {
+                    segments.append((crossed[0], crossed[1]))
+                } else if crossed.count == 4 { // saddle: the centre decides which pair of corners joins
+                    let centre = (f[j * w + i] + f[j * w + i + 1] + f[(j + 1) * w + i] + f[(j + 1) * w + i + 1]) / 4 >= 0.5
+                    if centre == a {
+                        segments += [(top, right), (bottom, left)]
+                    } else {
+                        segments += [(left, top), (right, bottom)]
+                    }
+                }
+            }
+        }
+        // Every crossing is shared by exactly two segments: walk them into loops.
+        var ends: [Int: [Int]] = [:]
+        for (n, s) in segments.enumerated() { ends[s.0, default: []].append(n); ends[s.1, default: []].append(n) }
+        var used = [Bool](repeating: false, count: segments.count), loops: [[Vec]] = []
+        for n in segments.indices where !used[n] {
+            used[n] = true
+            let start = segments[n].0
+            var loop = [point(start)], at = segments[n].1
+            while at != start, let next = ends[at]?.first(where: { !used[$0] }) {
+                loop.append(point(at))
+                used[next] = true
+                at = segments[next].0 == at ? segments[next].1 : segments[next].0
+            }
+            loops.append(loop)
+        }
+        return loops
+    }
+
+    /// `outlines` of the `kind` cells around `rect` (a district), with paths and the kinds in `under`
+    /// (painted on top of it) as unknown, so blobs carry on smoothly underneath them.
+    func outlines(_ kind: Cell, in rect: Rect, under: Set<Cell> = []) -> [[Vec]] {
+        let pad = 3
+        let c0 = max(0, Int(((rect.x - origin.x) / Terrain.cell).rounded(.down)) - pad)
+        let r0 = max(0, Int(((rect.y - origin.y) / Terrain.cell).rounded(.down)) - pad)
+        let c1 = min(cols, Int(((rect.x + rect.w - origin.x) / Terrain.cell).rounded(.up)) + pad)
+        let r1 = min(rows, Int(((rect.y + rect.h - origin.y) / Terrain.cell).rounded(.up)) + pad)
+        guard c1 > c0, r1 > r0 else { return [] }
+        var mask: [Bool?] = []
+        mask.reserveCapacity((c1 - c0) * (r1 - r0))
+        for r in r0..<r1 {
+            for c in c0..<c1 {
+                let cell = cells[r * cols + c]
+                mask.append(cell == .path || under.contains(cell) ? nil : cell == kind)
+            }
+        }
+        return Terrain.outlines(mask, cols: c1 - c0, rows: r1 - r0,
+                                origin: origin + Vec(Double(c0) * Terrain.cell, Double(r0) * Terrain.cell))
     }
 }
 
