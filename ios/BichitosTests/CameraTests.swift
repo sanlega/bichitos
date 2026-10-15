@@ -46,6 +46,11 @@ final class CameraTests: XCTestCase {
         XCTAssertEqual(Camera(center: .zero, scale: 7).level, .close)
     }
 
+    func testWhatShowsOverTheBichitosPerLevel() {
+        XCTAssertEqual(Camera.Level.allCases.map(\.showsIcons), [false, true, true, true])
+        XCTAssertEqual(Camera.Level.allCases.map(\.showsWords), [false, false, true, true])
+    }
+
     func testLettingGoSpringsToTheNearestLevelAroundTheFingers() {
         var c = Camera(center: Vec(500, 800), scale: 4.3)
         let focus = Vec(300, 200)

@@ -9,6 +9,11 @@ struct Camera: Equatable {
 
         var scale: Double { [1, 3, 5, 8][rawValue] }
 
+        /// What goes over the bichitos (DESIGN.md "Zoom"): nothing on the map, the state icon from Barrio,
+        /// names and phrase bubbles too from Calle.
+        var showsIcons: Bool { self != .map }
+        var showsWords: Bool { rawValue >= Level.street.rawValue }
+
         /// Nearest level, measured by ratio: pinching is multiplicative, so ×2 is as far from ×1 as ×4 from ×2.
         static func nearest(_ scale: Double) -> Level {
             allCases.min { abs(log($0.scale / scale)) < abs(log($1.scale / scale)) }!

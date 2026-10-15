@@ -73,4 +73,19 @@ final class LookTests: XCTestCase {
         XCTAssertTrue(alphas.contains { $0 > 0 && $0 < 255 }, "translucent shadow pixels")
         XCTAssertFalse(alphas.contains(255))
     }
+
+    func testNameAndBubbleAnchorToTheFeetAndTheHead() {
+        var grid = PixelGrid(width: 32, height: 32)
+        grid[16, 10] = 1 // top of the head: 22 rows above the feet
+        grid[16, 31] = 1
+        for pixel in [1.0, 3, 5, 8] {
+            let at = Look.anchors(grid, pixel: pixel)
+            XCTAssertEqual(at.bubble, 22 * pixel + 3, "fixed gap over the head at \(pixel) pt")
+            XCTAssertEqual(at.name, -pixel - 2, "fixed gap under the shadow at \(pixel) pt")
+        }
+        // A real sprite: the bubble sits just over its drawn pixels, well under the top of the canvas.
+        let tall = Look.anchors(Generator.render(GeneratorTests.recipe(4)), pixel: 5).bubble
+        XCTAssertGreaterThan(tall, 5)
+        XCTAssertLessThanOrEqual(tall, 32 * 5 + 3)
+    }
 }

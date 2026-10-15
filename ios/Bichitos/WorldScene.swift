@@ -239,6 +239,7 @@ final class WorldScene: SKScene, ObservableObject {
             // Feet sit a bit below the body centre the simulation tracks.
             node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
             node.zPosition = depth(node.position)
+            node.level = level
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
@@ -413,12 +414,15 @@ enum Haptics {
 }
 
 /// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
+/// Name and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
     private let label = SKLabelNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
     private let recipe: Recipe
+    /// Its rest-pose pixels, for where its head is.
+    private let rest: PixelGrid
     private var pixel: CGFloat = 2
     private var spring = Spring()
     private var legPhase = 0.0
@@ -429,6 +433,14 @@ final class BichitoNode: SKNode {
     private var key: SpriteKey?
     private var shownBubble: String?
     var language = Language.es
+    /// Zoom level: decides whether the name, the state icon and phrases show.
+    var level = Camera.Level.district {
+        didSet {
+            guard level != oldValue else { return }
+            label.isHidden = !level.showsWords
+            if talk != nil { talk?.shown = -1 } else { showBubble(shownBubble) } // redrawn for the new level
+        }
+    }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
     static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
     private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
@@ -442,6 +454,7 @@ final class BichitoNode: SKNode {
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
+        rest = Generator.render(b.recipe)
         lastVel = b.vel
         lastMood = b.mood
         super.init()
@@ -451,6 +464,7 @@ final class BichitoNode: SKNode {
         show(name: b.name)
         label.verticalAlignmentMode = .top
         label.zPosition = 50
+        label.isHidden = !level.showsWords
         addChild(label)
 
         bubble.fillColor = .white
@@ -470,8 +484,9 @@ final class BichitoNode: SKNode {
     func layout(pixel: CGFloat) {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
-        label.position = CGPoint(x: 0, y: -2 * pixel)
-        bubble.position = CGPoint(x: 0, y: 26 * pixel)
+        let at = Look.anchors(rest, pixel: Double(pixel))
+        label.position = CGPoint(x: 0, y: at.name)
+        bubble.position = CGPoint(x: 0, y: at.bubble)
         shapeBubble()
     }
 
@@ -546,7 +561,10 @@ final class BichitoNode: SKNode {
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
-                if shown != t.shown { showBubble(t.text, revealed: shown) }
+                // Below Calle the phrase is still heard, but the bubble keeps the state icon.
+                if shown != t.shown {
+                    if level.showsWords { showBubble(t.text, revealed: shown) } else { showBubble(text) }
+                }
                 t.shown = shown
                 talk = t
                 return
@@ -575,7 +593,7 @@ final class BichitoNode: SKNode {
 
     /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
     private func showBubble(_ text: String?, revealed: Int = .max) {
-        bubble.isHidden = text == nil
+        bubble.isHidden = text == nil || !level.showsIcons
         guard let text else { return }
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()
