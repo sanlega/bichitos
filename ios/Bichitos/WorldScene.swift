@@ -459,13 +459,17 @@ enum Haptics {
     static func tap() { light.impactOccurred() }
 }
 
-/// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
-/// Name and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
+/// One bichito on screen: sprite (with its pixel shadow), name under it, state icon or phrase bubble over it.
+/// Name, icon and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
     private let label = SKLabelNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
+    /// The pixel state icon, bare over the head (DESIGN.md "Los dos mundos": no soft bubble around pixel art).
+    private let icon = SKSpriteNode()
+    /// Points per icon pixel: fixed on screen, an integer so the pixels stay square.
+    private static let iconScale: CGFloat = 2
     private let recipe: Recipe
     /// Its rest-pose pixels, for where its head is.
     private let rest: PixelGrid
@@ -477,14 +481,14 @@ final class BichitoNode: SKNode {
     private var lastVel: Vec
     private var lastMood: Bichito.Mood
     private var key: SpriteKey?
-    private var shownBubble: String?
+    private var shownIcon: Look.Icon?
     var language = Language.es
     /// Zoom level: decides whether the name, the state icon and phrases show.
     var level = Camera.Level.district {
         didSet {
             guard level != oldValue else { return }
             label.isHidden = !level.showsWords
-            if talk != nil { talk?.shown = -1 } else { showBubble(shownBubble) } // redrawn for the new level
+            if talk != nil { talk?.shown = -1 } else { show(icon: shownIcon) } // redrawn for the new level
         }
     }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
@@ -522,6 +526,12 @@ final class BichitoNode: SKNode {
         bubbleText.preferredMaxLayoutWidth = BichitoNode.bubbleMaxWidth
         bubble.addChild(bubbleText)
         addChild(bubble)
+
+        icon.anchorPoint = CGPoint(x: 0.5, y: 0)
+        icon.size = CGSize(width: CGFloat(Look.Icon.canvas) * BichitoNode.iconScale, height: CGFloat(Look.Icon.canvas) * BichitoNode.iconScale)
+        icon.zPosition = 100
+        icon.isHidden = true
+        addChild(icon)
         layout(pixel: pixel)
     }
 
@@ -533,6 +543,7 @@ final class BichitoNode: SKNode {
         let at = Look.anchors(rest, pixel: Double(pixel))
         label.position = CGPoint(x: 0, y: at.name)
         bubble.position = CGPoint(x: 0, y: at.bubble)
+        icon.position = bubble.position
         shapeBubble()
     }
 
@@ -605,30 +616,30 @@ final class BichitoNode: SKNode {
             sprite.texture = Sprites.shared.texture(next)
         }
         if b.name != shownName { show(name: b.name) }
-        let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
+        let state = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
         if var t = talk {
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
                 // Below Calle the phrase is still heard, but the bubble keeps the state icon.
                 if shown != t.shown {
-                    if level.showsWords { showBubble(t.text, revealed: shown) } else { showBubble(text) }
+                    if level.showsWords { showBubble(t.text, revealed: shown) } else { show(icon: state) }
                 }
                 t.shown = shown
                 talk = t
                 return
             }
             talk = nil
-            shownBubble = text
-            showBubble(text)
+            shownIcon = state
+            show(icon: state)
         }
-        if text != shownBubble {
-            shownBubble = text
-            if text == nil || !startTalking(b) { showBubble(text) }
+        if state != shownIcon {
+            shownIcon = state
+            if state == nil || !startTalking(b) { show(icon: state) }
         }
     }
 
-    /// Voice (#14): now and then, only on screen, a phrase replaces the emoji and appears in step with the babble.
+    /// Voice (#14): now and then, only on screen, a phrase replaces the icon and appears in step with the babble.
     private func startTalking(_ b: Bichito) -> Bool {
         guard BichitoNode.alwaysTalk || Double.random(in: 0..<1) < 0.35,
               let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return false }
@@ -640,10 +651,16 @@ final class BichitoNode: SKNode {
         return true
     }
 
+    private func show(icon state: Look.Icon?) {
+        bubble.isHidden = true
+        icon.isHidden = state == nil || !level.showsIcons
+        if let state { icon.texture = Sprites.shared.texture(state, accent: Palette.of(recipe).colors[5]) }
+    }
+
     /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
-    private func showBubble(_ text: String?, revealed: Int = .max) {
-        bubble.isHidden = text == nil || !level.showsIcons
-        guard let text else { return }
+    private func showBubble(_ text: String, revealed: Int = .max) {
+        icon.isHidden = true
+        bubble.isHidden = !level.showsIcons
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()
         style.alignment = .center
