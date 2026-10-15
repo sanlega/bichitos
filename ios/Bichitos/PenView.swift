@@ -23,12 +23,12 @@ struct PenView<Content: View>: View {
 
     var body: some View {
         ZStack {
-            Color(Ink.mist).ignoresSafeArea()
+            Color.mist.ignoresSafeArea()
             if let scene { content(scene) }
             if slow {
                 Text(language == .es ? "Mientras no estabas…" : "While you were away…")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(Ink.ink).opacity(0.55))
+                    .foregroundStyle(Color.inkDim)
             }
         }
         .task { await open() }
@@ -154,18 +154,13 @@ struct AwaySummary: View {
                     }
                 }
             }
-            Button { dismiss() } label: {
-                Text(language == .es ? "¡Vale!" : "Got it")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .background(Color(Ink.accent), in: RoundedRectangle(cornerRadius: 20))
-            }
+            Button(language == .es ? "¡Vale!" : "Got it") { dismiss() }
+                .buttonStyle(PrimaryButtonStyle())
         }
-        .foregroundStyle(Color(Ink.ink))
+        .foregroundStyle(Color.ink)
         .padding(24)
         .presentationDetents([.medium, .large])
         .presentationCornerRadius(28)
-        .presentationBackground(.white)
+        .presentationBackground(Color.card)
     }
 }
