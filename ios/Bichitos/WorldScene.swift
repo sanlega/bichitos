@@ -41,7 +41,7 @@ final class WorldScene: SKScene {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }
-        pixel = max(2, (min(size.width, size.height) / 180).rounded(.down))
+        pixel = max(3, (min(size.width, size.height) / 140).rounded(.down))
         let w = Double(size.width / unit), h = Double(size.height / unit)
         // shortcut: the camera sits on the centre of the first district; panning and zoom come with the map (#11).
         let home = world.districts[0].rect.center
@@ -196,6 +196,7 @@ final class BichitoNode: SKNode {
         bubble.zPosition = 100
         bubble.isHidden = true
         bubbleText.fontSize = 14
+        bubbleText.fontColor = Ink.ink // SKLabelNode defaults to white, invisible on the white bubble
         bubbleText.verticalAlignmentMode = .center
         bubble.addChild(bubbleText)
         addChild(bubble)
