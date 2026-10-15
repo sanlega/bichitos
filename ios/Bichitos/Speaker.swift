@@ -32,6 +32,7 @@ final class Speaker: @unchecked Sendable {
     }
 
     func say(_ text: String, voice: VoiceParams, id: Int) {
+        guard Settings.voice else { return } // «Voz» off: the bubble still writes itself, silently
         let babble = Babble(text, voice: voice, sampleRate: sampleRate)
         inbox.withLock { $0.append(Mixer.Voice(id: id, babble: babble)) }
         if !engine.isRunning { try? engine.start() }

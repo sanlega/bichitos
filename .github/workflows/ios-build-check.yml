@@ -142,6 +142,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/news.png
 
+      - name: Screenshot of the settings sheet
+        # -screenshot-settings opens the gearshape's sheet: «Voz» and «Vibración» (#15).
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-settings
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/settings.png
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4

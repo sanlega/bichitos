@@ -3,11 +3,12 @@ import SwiftUI
 /// The tray in food mode (DESIGN.md "Modos"): the five foods in pixel ×3 and «Hecho», under the hint.
 struct FoodPicker: View {
     @Binding var kind: Food.Kind
+    let language: Language
     var done: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("Toca el suelo para soltar comida")
+            Text(language == .es ? "Toca el suelo para soltar comida" : "Tap the ground to drop food")
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.ink)
                 .padding(.horizontal, 12)
@@ -23,10 +24,10 @@ struct FoodPicker: View {
                             .frame(width: CGFloat(Food.canvas * 3), height: CGFloat((Food.canvas + 1) * 3))
                     }
                     .buttonStyle(IconButtonStyle(background: k == kind ? Color.accent : Color.fill)) // accent = chosen, like an active mode
-                    .accessibilityLabel(k.name(.es))
+                    .accessibilityLabel(k.name(language))
                     .accessibilityAddTraits(k == kind ? .isSelected : [])
                 }
-                Button("Hecho", action: done)
+                Button(language == .es ? "Hecho" : "Done", action: done)
                     .buttonStyle(PrimaryButtonStyle())
                     .fixedSize() // the principal style stretches; here it shares the row
                     .padding(.leading, 4)
