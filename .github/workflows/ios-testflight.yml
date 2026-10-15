@@ -18,7 +18,7 @@ on:
         default: false
 
 permissions:
-  contents: write # match stores encrypted certificates in the "certificates" branch
+  contents: read # certificates live in musiquillas' private repo, reached with MATCH_DEPLOY_KEY
 
 concurrency:
   group: testflight
@@ -58,10 +58,21 @@ jobs:
           ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
         run: |
-          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY APPLE_TEAM_ID MATCH_PASSWORD; do
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY APPLE_TEAM_ID MATCH_PASSWORD MATCH_DEPLOY_KEY; do
             if [[ -z "${!v}" ]]; then echo "Missing secret $v" >&2; exit 1; fi
           done
+
+      - name: SSH key for the certificates repo
+        env:
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "$MATCH_DEPLOY_KEY" | ssh-add -
+          mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 
       - name: Build and upload to TestFlight
         env:
