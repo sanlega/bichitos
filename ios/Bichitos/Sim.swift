@@ -277,7 +277,6 @@ struct World: Codable, Equatable {
         if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters() }
         if tickCount % 600 == 0 { emigrate() }
         if tickCount % 20 == 0 { escapeNeglected() }
-        dates()
         hatchEggs(World.dt)
     }
 
@@ -354,7 +353,7 @@ struct World: Codable, Equatable {
             let d = o.pos - b.pos
             switch b.mood {
             case .love:
-                if let k = b.bench { dir = toBench(&b, o, k, h, ground); pace = 0.8 }
+                if let k = b.bench { dir = toBench(i, &b, j, o, k, h, ground); pace = 0.8 }
                 else if d.length > r.radius + o.recipe.radius + 4 { dir = d.unit; pace = 0.8 }
             case .fight: dir = d.unit; pace = 1.2
             case .chase: dir = d.unit; pace = 1.4
@@ -568,7 +567,7 @@ struct World: Codable, Equatable {
             like(j, i, 0.12)
             if aff < 0.6 && aff + 0.12 >= 0.6 { record(.fellInLove(a.id, b.id)) }
             for k in [i, j] { bichitos[k].needs.affection = min(1, bichitos[k].needs.affection + 0.2) }
-            // To the district's banco while it is free (they lay their egg there, `dates`); else love here and now.
+            // To the district's banco while it is free (they lay their egg there, `toBench`); else love here and now.
             let bench = freeBench(a.district)
             bichitos[i].enter(.love, for: bench == nil ? 5 : 90, target: b.id)
             bichitos[j].enter(.love, for: bench == nil ? 5 : 90, target: a.id)
@@ -609,39 +608,32 @@ struct World: Codable, Equatable {
         record(.eggLaid(a.id, b.id))
     }
 
-    /// A bench lover walks to its end of the banco `k`; seated, it faces its partner and waits for them (its clock stops
-    /// until both sit). Returns where to walk, zero once seated. The partner gone or elsewhere calls the date off.
-    private func toBench(_ b: inout Bichito, _ o: Bichito, _ k: Int, _ h: Double, _ ground: Terrain) -> Vec {
+    /// A bench lover (`i`, its partner `j` = `o`) walks to its end of the banco `k`. Seated, it faces its partner and
+    /// waits, its clock stopped, until both sit; then they stay `benchStay` and love grows. The lower id ends the date: they
+    /// lay their egg (if they can) and get up. Returns where to walk, zero once seated. The partner gone calls it off.
+    private mutating func toBench(_ i: Int, _ b: inout Bichito, _ j: Int, _ o: Bichito, _ k: Int, _ h: Double,
+                                  _ ground: Terrain) -> Vec {
         guard o.bench == k, o.target == b.id, ground.buildings.indices.contains(k) else { b.timer = 0; return .zero }
-        let seat = World.seat(on: ground.buildings[k], b.id, o.id)
+        let bench = ground.buildings[k], seat = World.seat(on: bench, b.id, o.id)
         let d = seat - b.pos
         guard d.length < 2 + b.recipe.speed * 0.8 * h else { return d.unit }
+        let arriving = b.pos != seat
         b.pos = seat
         b.vel = .zero
         b.heading = b.id < o.id ? 0 : .pi // facing each other
-        b.timer = min(b.timer, World.benchStay)
-        if o.pos != World.seat(on: ground.buildings[k], o.id, b.id) { b.timer += h }
-        return .zero
-    }
-
-    /// Pairs sitting together on a banco: their love grows, and when the date is over they lay their egg (if they can)
-    /// and get up. Every `lod` ticks (0.5 s) after the moves, so it always catches the end before their 2 s are up;
-    /// and it copies only the bench lovers: a catch-up runs it 14 400 times.
-    private mutating func dates() {
-        guard tickCount % World.lod == 0 else { return }
-        for i in bichitos.indices where bichitos[i].bench != nil {
-            let a = bichitos[i], all = terrain.buildings
-            guard let k = a.bench, let t = a.target, a.id < t, let j = index(of: t), bichitos[j].bench == k,
-                  all.indices.contains(k), a.pos == World.seat(on: all[k], a.id, t),
-                  bichitos[j].pos == World.seat(on: all[k], t, a.id) else { continue }
-            let aff = a.affinity[t] ?? 0, grow = World.dt * Double(World.lod) * World.benchLove
-            like(i, j, grow)
-            like(j, i, grow)
-            if aff < 0.6 && aff + grow >= 0.6 { record(.fellInLove(a.id, t)) }
-            guard min(a.timer, bichitos[j].timer) < 2 else { continue }
+        guard o.pos == World.seat(on: bench, o.id, b.id) else { b.timer = World.benchStay; return .zero } // waits
+        if arriving { b.timer = World.benchStay }
+        let aff = b.affinity[o.id] ?? 0, grow = h * World.benchLove
+        b.affinity[o.id] = min(1, aff + grow)
+        guard b.id < o.id else { return .zero }
+        if aff < 0.6 && aff + grow >= 0.6 { record(.fellInLove(b.id, o.id)) }
+        if b.timer < 2 {
+            bichitos[i] = b
             breed(i, j)
             for n in [i, j] where bichitos[n].mood == .love { bichitos[n].enter(.happy, for: 3) }
+            b = bichitos[i]
         }
+        return .zero
     }
 
     private mutating func hatchEggs(_ h: Double) {
