@@ -3,8 +3,8 @@ import SwiftUI
 
 @main
 struct BichitosApp: App {
-    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same.
-    @State private var scene = CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
+    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same; `-screenshot-talk` too.
+    @State private var scene = CommandLine.arguments.contains { $0.hasPrefix("-screenshot") } ? Terrarium.screenshot() : Terrarium.random()
 
     var body: some Scene {
         WindowGroup {

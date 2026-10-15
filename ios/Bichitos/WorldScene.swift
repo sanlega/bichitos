@@ -79,6 +79,7 @@ final class WorldScene: SKScene {
                 node = n
             } else {
                 node = BichitoNode(b, pixel: pixel)
+                node.language = world.language
                 bichitoNodes[b.id] = node
                 addChild(node)
             }
@@ -173,6 +174,16 @@ final class BichitoNode: SKNode {
     private var lastMood: Bichito.Mood
     private var key: SpriteKey?
     private var shownBubble: String?
+    var language = Language.es
+    /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
+    static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
+    private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
+    private var bubbleSize = CGSize(width: 30, height: 24)
+    private static let bubbleMaxWidth: CGFloat = 120
+    private static let bubbleFont: UIFont = {
+        let font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        return UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 13)
+    }()
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
@@ -195,9 +206,9 @@ final class BichitoNode: SKNode {
         bubble.strokeColor = Ink.ink.withAlphaComponent(0.1)
         bubble.zPosition = 100
         bubble.isHidden = true
-        bubbleText.fontSize = 14
-        bubbleText.fontColor = Ink.ink // SKLabelNode defaults to white, invisible on the white bubble
         bubbleText.verticalAlignmentMode = .center
+        bubbleText.numberOfLines = 0
+        bubbleText.preferredMaxLayoutWidth = BichitoNode.bubbleMaxWidth
         bubble.addChild(bubbleText)
         addChild(bubble)
         layout(pixel: pixel)
@@ -209,8 +220,13 @@ final class BichitoNode: SKNode {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
         label.position = CGPoint(x: 0, y: -2 * pixel)
-        // Bubble: rounded box with a little tail pointing down at the head.
-        let w: CGFloat = 30, h: CGFloat = 24, tail: CGFloat = 6
+        bubble.position = CGPoint(x: 0, y: 26 * pixel)
+        shapeBubble()
+    }
+
+    /// Rounded box with a little tail pointing down at the head, sized to `bubbleSize`.
+    private func shapeBubble() {
+        let w = bubbleSize.width, h = bubbleSize.height, tail: CGFloat = 6
         let path = CGMutablePath()
         path.addRoundedRect(in: CGRect(x: -w / 2, y: tail, width: w, height: h), cornerWidth: 10, cornerHeight: 10)
         path.move(to: CGPoint(x: -5, y: tail + 0.5))
@@ -218,7 +234,6 @@ final class BichitoNode: SKNode {
         path.addLine(to: CGPoint(x: 5, y: tail + 0.5))
         path.closeSubpath()
         bubble.path = path
-        bubble.position = CGPoint(x: 0, y: 26 * pixel)
         bubbleText.position = CGPoint(x: 0, y: tail + h / 2)
     }
 
@@ -251,10 +266,57 @@ final class BichitoNode: SKNode {
             sprite.texture = Sprites.shared.texture(next)
         }
         let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy)
+        if var t = talk {
+            t.clock += dt
+            if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
+                let shown = t.times.dropLast().filter { $0 <= t.clock }.count
+                if shown != t.shown { showBubble(t.text, revealed: shown) }
+                t.shown = shown
+                talk = t
+                return
+            }
+            talk = nil
+            shownBubble = text
+            showBubble(text)
+        }
         if text != shownBubble {
             shownBubble = text
-            bubble.isHidden = text == nil
-            bubbleText.text = text
+            if text == nil || !startTalking(b) { showBubble(text) }
+        }
+    }
+
+    /// Voice (#14): now and then, only on screen, a phrase replaces the emoji and appears in step with the babble.
+    private func startTalking(_ b: Bichito) -> Bool {
+        guard BichitoNode.alwaysTalk || Double.random(in: 0..<1) < 0.35,
+              let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return false }
+        let line = Phrases.say(mood: b.mood, needs: b.needs, dizzy: b.dizzy, personality: recipe.personality,
+                               seed: .random(in: 0...UInt64.max), language: language)
+        let voice = recipe.voice
+        talk = (line, Babble.timeline(line, voice: voice), 0, -1)
+        Speaker.shared.say(line, voice: voice, id: b.id)
+        return true
+    }
+
+    /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
+    private func showBubble(_ text: String?, revealed: Int = .max) {
+        bubble.isHidden = text == nil
+        guard let text else { return }
+        let chars = Array(text), k = min(revealed, chars.count)
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        let s = NSMutableAttributedString(string: String(chars[..<k]), attributes: [
+            .font: BichitoNode.bubbleFont, .foregroundColor: Ink.ink, .paragraphStyle: style,
+        ])
+        s.append(NSAttributedString(string: String(chars[k...]), attributes: [
+            .font: BichitoNode.bubbleFont, .foregroundColor: UIColor.clear, .paragraphStyle: style,
+        ]))
+        bubbleText.attributedText = s
+        let box = s.boundingRect(with: CGSize(width: BichitoNode.bubbleMaxWidth, height: 200),
+                                 options: .usesLineFragmentOrigin, context: nil)
+        let size = CGSize(width: max(30, ceil(box.width) + 16), height: max(24, ceil(box.height) + 10))
+        if size != bubbleSize {
+            bubbleSize = size
+            shapeBubble()
         }
     }
 }

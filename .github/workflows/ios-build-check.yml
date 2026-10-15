@@ -41,7 +41,7 @@ jobs:
           echo "SIM=$UDID" >> "$GITHUB_ENV"
 
       - name: Build and test
-        # TEST_RUNNER_GALLERY_DIR reaches the tests as GALLERY_DIR: the generator gallery test writes its PNGs there.
+        # TEST_RUNNER_GALLERY_DIR reaches the tests as GALLERY_DIR: the generator gallery test writes its PNGs there, the voice test its WAV.
         run: |
           set +e
           mkdir -p gallery
@@ -62,6 +62,11 @@ jobs:
           sleep 6
           mkdir -p screenshots
           xcrun simctl io "$SIM" screenshot screenshots/world.png
+          # Same world, but every bubble is a phrase from the voice (#14).
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot-talk
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/talk.png
 
       - name: Upload build log
         if: always()
