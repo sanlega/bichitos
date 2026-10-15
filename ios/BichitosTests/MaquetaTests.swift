@@ -1,3 +1,4 @@
+import SpriteKit
 import XCTest
 @testable import Bichitos
 
@@ -68,6 +69,21 @@ final class MaquetaTests: XCTestCase {
         // A bowl sorts by its middle, so the eggs in it are drawn over its back rim.
         XCTAssertGreaterThan(z(nido.rect.y + nido.rect.h * 0.75), z(Maqueta.sortY(nido)))
         XCTAssertLessThan(Maqueta.sortY(nido), nido.rect.y + nido.rect.h)
+    }
+
+    /// The CI capture's staged sleeper stays inside its casita for the capture's 6 s.
+    func testStagedSleeperStaysInside() {
+        let scene = Terrarium.screenshot()
+        scene.size = CGSize(width: 440, height: 956)
+        var w = scene.world
+        let id = w.bichitos.last!.id
+        var log: [String] = []
+        for t in 0..<200 {
+            w.tick()
+            let b = w.bichito(id)!
+            if b.mood != .sleep || w.asleepInside.isEmpty { log.append("tick \(t): \(b.mood) \(b.pos) timer \(b.timer) sleep \(b.needs.sleep)"); break }
+        }
+        XCTAssertEqual(log, [])
     }
 
     func testOnlyOwnersAsleepAtTheDoorAreInside() {
