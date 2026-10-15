@@ -6,10 +6,9 @@ enum Ink {
     static let ink = UIColor(red: 0x2B / 255, green: 0x2A / 255, blue: 0x33 / 255, alpha: 1)
     static let accent = UIColor(red: 1, green: 0x6B / 255, blue: 0x4A / 255, alpha: 1)
 
-    /// District tint: its own hue mixed 8% over mist, so districts tell apart without competing with the bichitos.
+    /// District tint: its theme colour mixed 8% over mist, so districts tell apart without competing with the bichitos.
     static func tint(_ district: Int) -> UIColor {
-        let hues: [UInt32] = [0x5AA9E6, 0xE6B85A, 0xA98BE6, 0xE68A5A, 0x5AE6A9, 0xE65AA9, 0x5AD0E6, 0x9BC25A]
-        let h = hues[district % hues.count]
+        let h = District.themes[district % District.themes.count].tint
         func mix(_ shift: UInt32, _ base: CGFloat) -> CGFloat { base * 0.92 + CGFloat((h >> shift) & 0xFF) / 255 * 0.08 }
         return UIColor(red: mix(16, 0xF3 / 255), green: mix(8, 0xF1 / 255), blue: mix(0, 0xEC / 255), alpha: 1)
     }
@@ -31,8 +30,10 @@ final class WorldScene: SKScene, ObservableObject {
     private var knownDistricts: Int
 
     private var lens: Camera
-    private var pinchFrom = 3
+    private var pinchFrom = 3.0
     private var districtNodes: [SKSpriteNode] = []
+    /// Zoom level the camera is at (or springing to), for what each level shows.
+    var level: Camera.Level { lens.level }
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
     private var pixel: CGFloat { CGFloat(lens.pixel) }
     private var unit: CGFloat { CGFloat(lens.unit) }
@@ -60,7 +61,7 @@ final class WorldScene: SKScene, ObservableObject {
     init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
         self.populate = populate
-        lens = Camera(center: focus ?? world.districts[0].rect.center, pixel: Camera.pixels.lowerBound)
+        lens = Camera(center: focus ?? world.districts[0].rect.center, scale: Camera.Level.district.scale)
         knownDistricts = world.districts.count
         homes = Dictionary(world.bichitos.map { ($0.id, $0.district) }, uniquingKeysWith: { a, _ in a })
         super.init(size: CGSize(width: 1, height: 1))
@@ -80,7 +81,11 @@ final class WorldScene: SKScene, ObservableObject {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }
-        if oldSize.width <= 10 { lens.pixel = max(Camera.pixels.lowerBound, Int(min(size.width, size.height) / 140)) }
+        if oldSize.width <= 10 {
+            // `-screenshot-zoom 5` (CI) starts at another level.
+            let start = UserDefaults.standard.double(forKey: "screenshot-zoom")
+            lens.scale = Camera.Level.nearest(start > 0 ? start : max(3, Double(Int(min(size.width, size.height) / 140)))).scale
+        }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -113,14 +118,26 @@ final class WorldScene: SKScene, ObservableObject {
         longPress = g
     }
 
-    /// Pinch zoom in whole pixel steps, around the fingers.
+    /// Pinch: the map scales smoothly around the fingers; letting go springs it to the nearest level.
     @objc private func pinched(_ g: UIPinchGestureRecognizer) {
-        if g.state == .began { pinchFrom = lens.pixel }
-        guard g.state == .changed, let view else { return }
-        let target = Int((Double(pinchFrom) * Double(g.scale)).rounded())
+        guard let view else { return }
+        let f = g.location(in: view), focus = Vec(Double(f.x), Double(f.y))
+        switch g.state {
+        case .began:
+            lens.grab()
+            pinchFrom = lens.scale
+        case .changed:
+            zoom { $0.zoom(to: pinchFrom * Double(g.scale), around: focus, screenSize) }
+        case .ended, .cancelled, .failed:
+            lens.release(around: focus)
+        default: break
+        }
+    }
+
+    /// Changes the camera; sprites are laid out again only when their whole pixel size changes.
+    private func zoom(_ change: (inout Camera) -> Void) {
         let before = lens.pixel
-        let f = g.location(in: view)
-        lens.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
+        change(&lens)
         fit()
         if lens.pixel != before { relayout() }
     }
@@ -178,6 +195,7 @@ final class WorldScene: SKScene, ObservableObject {
     override func update(_ currentTime: TimeInterval) {
         let dt = lastTime.map { min(max(currentTime - $0, 0), 0.25) } ?? 0
         lastTime = currentTime
+        if lens.snap != nil { zoom { $0.settle(dt: dt, screenSize) } }
         pending += dt
         while pending >= World.dt {
             pending -= World.dt

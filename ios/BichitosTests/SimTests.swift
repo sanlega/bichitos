@@ -30,7 +30,7 @@ final class SimTests: XCTestCase {
 
     func testBodiesStayInsideTheMap() {
         var w = world(seed: 5, count: 30)
-        XCTAssertGreaterThanOrEqual(w.districts.count, 3) // 12 per district
+        XCTAssertGreaterThanOrEqual(w.districts.count, 3) // 14 per district
         w.visibleRect = Rect(x: 0, y: 0, w: w.size.x, h: w.size.y)
         for (k, b) in w.bichitos.enumerated() where k % 3 == 0 {
             w.grab(b.id)
@@ -54,7 +54,7 @@ final class SimTests: XCTestCase {
         let id = w.add(recipe(.dormilona, seed: 1), at: Vec(200, 200))
         w.bichitos[0].needs.hunger = 0.2
         let food = Vec(500, 260)
-        w.dropFood(at: food)
+        w.dropFood(at: food, kind: w.bichitos[0].favorite)
         XCTAssertEqual(w.bichitos[0].mood, .eat)
         let before = (w.bichitos[0].pos - food).length
         for _ in 0..<40 { w.tick() }
@@ -139,7 +139,13 @@ final class SimTests: XCTestCase {
         XCTAssertTrue(w.events.contains(.escaped(id)))
         XCTAssertTrue(w.notes[0].text.hasSuffix(w.notes[0].bichito.name))
         print("Note: \(w.notes[0].text)")
-        w.dropFood(at: w.notes[0].pos + Vec(10, 0))
+        let favorite = w.notes[0].bichito.favorite
+        let other = Food.Kind.allCases.first { $0 != favorite }!
+        w.dropFood(at: w.notes[0].pos + Vec(10, 0), kind: other)
+        XCTAssertEqual(w.notes.count, 1, "only its favourite brings it back")
+        w.dropFood(at: w.notes[0].pos + Vec(w.notes[0].pos.x < 500 ? 200 : -200, 0), kind: favorite)
+        XCTAssertEqual(w.notes.count, 1, "it has to be next to the note")
+        w.dropFood(at: w.notes[0].pos + Vec(10, 0), kind: favorite)
         XCTAssertTrue(w.notes.isEmpty)
         XCTAssertNotNil(w.bichito(id))
         XCTAssertTrue(w.events.contains(.recovered(id)))
