@@ -11,6 +11,8 @@ struct WorldView: View {
     @State private var card: Int? // id of the bichito whose card is open
     @State private var peek: Int? // id of the bichito whose peek is up
     @State private var picking = false // BarrioPicker is open
+    @State private var reading = false // NewsFeed is open
+
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     /// VoiceOver: an element over each bichito on screen, with the gestures as actions (DESIGN.md Accesibilidad).
@@ -67,6 +69,7 @@ struct WorldView: View {
             .padding(.top, 8)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             .sheet(isPresented: $picking) { BarrioPicker(scene: scene) { picking = false } }
+            .sheet(isPresented: $reading) { NewsFeed(scene: scene) { reading = false } }
             if foodMode {
                 // Food mode marks the screen edge (DESIGN.md "Modos").
                 Rectangle().strokeBorder(Color.accent, lineWidth: 3)
@@ -85,7 +88,7 @@ struct WorldView: View {
                             .padding(.horizontal, 16)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
+                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true }, news: { reading = true })
                         .padding(.bottom, 16)
                 }
             }
@@ -103,9 +106,16 @@ struct WorldView: View {
         .onAppear {
             scene.onLongPress = { card = $0 }
             scene.onPeek = { peek = $0 }
+            scene.onToastTap = { event in
+                if let place = scene.world.news.place(of: event) { scene.travel(to: place) }
+                reading = false
+            }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
             if CommandLine.arguments.contains("-screenshot-barrios") { // after the staged world is populated
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true }
+            }
+            if CommandLine.arguments.contains("-screenshot-news") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { reading = true }
             }
             if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
             if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
@@ -119,11 +129,13 @@ struct WorldView: View {
     }
 }
 
-/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons with the principal one in the centre.
+/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons in the order «comida susto (+) noti mapa»;
+/// the principal one sits in the centre once the map button (5th) lands.
 struct Tray: View {
     @Binding var foodMode: Bool
     var scare: () -> Void
     var add: () -> Void
+    var news: () -> Void
 
     var body: some View {
         HStack(spacing: 16) {
@@ -131,12 +143,15 @@ struct Tray: View {
                 .buttonStyle(IconButtonStyle(background: foodMode ? Color.accent : Color.fill))
                 .accessibilityLabel("Modo comida")
                 .accessibilityAddTraits(foodMode ? .isSelected : [])
-            Button(action: add) { Image(systemName: "plus") }
-                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
-                .accessibilityLabel("Nuevo bichito")
             Button(action: scare) { Image(systemName: "bolt.fill") }
                 .buttonStyle(IconButtonStyle())
                 .accessibilityLabel("Asustar")
+            Button(action: add) { Image(systemName: "plus") }
+                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
+                .accessibilityLabel("Nuevo bichito")
+            Button(action: news) { Image(systemName: "newspaper.fill") }
+                .buttonStyle(IconButtonStyle())
+                .accessibilityLabel("Noticias")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())

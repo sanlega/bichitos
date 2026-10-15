@@ -24,18 +24,38 @@ struct News: Codable, Equatable {
 
     /// A repeat of a story already in the list bumps its count and date and moves it to the top.
     mutating func add(_ event: WorldEvent, date: Date, place: Vec) {
-        var e = event
-        switch event {
-        case let .fought(a, b): e = .fought(min(a, b), max(a, b))
-        case let .fellInLove(a, b): e = .fellInLove(min(a, b), max(a, b))
-        default: break
-        }
+        let e = News.story(event)
         var item = Item(event: e, date: date, place: place)
         if let k = items.firstIndex(where: { $0.event == e }) {
             item.count = items.remove(at: k).count + 1
         }
         items.insert(item, at: 0)
         if items.count > News.capacity { items.removeLast(items.count - News.capacity) }
+    }
+
+    /// The event as stored: pairs lowest id first, so both orders are the same story.
+    static func story(_ event: WorldEvent) -> WorldEvent {
+        switch event {
+        case let .fought(a, b): return .fought(min(a, b), max(a, b))
+        case let .fellInLove(a, b): return .fellInLove(min(a, b), max(a, b))
+        default: return event
+        }
+    }
+
+    /// Where a live event (a toast) happened, as of its latest time.
+    func place(of event: WorldEvent) -> Vec? { items.first { $0.event == News.story(event) }?.place }
+
+    /// «hace 3 min» / "3 min ago"; under a minute, «ahora» / "just now".
+    static func ago(_ date: Date, now: Date, _ language: Language) -> String {
+        let s = max(0, now.timeIntervalSince(date)), es = language == .es
+        let n: Int, unit: String
+        switch s {
+        case ..<60: return es ? "ahora" : "just now"
+        case ..<3600: (n, unit) = (Int(s / 60), "min")
+        case ..<86400: (n, unit) = (Int(s / 3600), "h")
+        default: (n, unit) = (Int(s / 86400), "d")
+        }
+        return es ? "hace \(n) \(unit)" : "\(n) \(unit) ago"
     }
 }
 
