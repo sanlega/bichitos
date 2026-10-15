@@ -25,8 +25,8 @@ struct FoodPicker: View {
                             .resizable()
                             .frame(width: CGFloat(Food.canvas * 3), height: CGFloat((Food.canvas + 1) * 3))
                             .frame(width: 44, height: 48)
-                            .background(Circle().fill(k == kind ? Color.brand.opacity(0.18) : Color.ink.opacity(0.06)))
-                            .overlay(Circle().strokeBorder(k == kind ? Color.brand : .clear, lineWidth: 2))
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(k == kind ? Color.brand.opacity(0.18) : Color.ink.opacity(0.06)))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(k == kind ? Color.brand : .clear, lineWidth: 2))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(k.name(.es))
