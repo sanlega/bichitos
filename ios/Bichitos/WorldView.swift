@@ -70,7 +70,7 @@ struct WorldView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
         .sheet(isPresented: $creating) {
             CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
-                         language: scene.world.language) { recipe, name, description in
+                         language: scene.world.language, taken: scene.world.takenNames) { recipe, name, description in
                 scene.drop(recipe, name: name, description: description)
             }
         }

@@ -142,7 +142,7 @@ struct World: Codable, Equatable {
         }
         p = clamp(p, recipe.radius)
         let heading = roll(0...(2 * Double.pi))
-        let generated = Names.make(seed: recipe.seed, language: language)
+        let generated = Names.make(seed: recipe.seed, language: language, taken: takenNames)
         let b = Bichito(id: id, recipe: recipe, name: name ?? generated.name, description: description ?? generated.description,
                         born: date, parents: parents, pos: p, heading: heading, district: d)
         bichitos.append(b)
