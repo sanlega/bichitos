@@ -41,7 +41,7 @@ struct CreatorSheet: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) { release }
-        .background(Color.white)
+        .background(Color.card)
         .foregroundStyle(Color.ink)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
@@ -67,13 +67,8 @@ struct CreatorSheet: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .onChange(of: name) { _, typed in if typed.count > 16 { name = String(typed.prefix(16)) } }
-                Button(action: rerollText) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(.body, design: .rounded, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                        .overlay(Circle().stroke(Color.hairline))
-                }
-                .buttonStyle(.plain)
+                Button(action: rerollText) { Image(systemName: "arrow.triangle.2.circlepath") }
+                    .buttonStyle(IconButtonStyle())
                 .accessibilityLabel("Otro nombre y descripción")
             }
             Text(description)
@@ -130,15 +125,11 @@ struct CreatorSheet: View {
             dismiss()
         } label: {
             Text("Soltar")
-                .font(.system(.headline, design: .rounded, weight: .heavy))
-                .foregroundStyle(Color.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color.brand))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PrimaryButtonStyle())
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .background(Color.white)
+        .background(Color.card)
     }
 
     private func rerollText() {
@@ -153,54 +144,17 @@ struct CreatorSheet: View {
     }
 }
 
-/// DESIGN.md `Chip`: hairline capsule; selected = ink fill with card text.
-struct Chip: View {
-    let label: String
-    var swatch: Color? = nil
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let swatch {
-                    Circle().fill(swatch).frame(width: 12, height: 12)
-                        .overlay(Circle().stroke(Color.white.opacity(selected ? 0.6 : 0)))
-                }
-                Text(label)
-            }
-            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            .foregroundStyle(selected ? Color.white : Color.ink)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 36)
-            .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Color.ink : Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.hairline))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
 /// DESIGN.md `Dice`: tap = new seed (same choices, other details), hold = everything random.
 struct Dice: View {
     let reseed: () -> Void
     let randomise: () -> Void
 
     var body: some View {
-        Image(systemName: "die.face.5.fill")
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundStyle(Color.ink)
-            .frame(width: 44, height: 44)
-            .background(Circle().fill(Color.white))
-            .overlay(Circle().stroke(Color.hairline))
-            .contentShape(Circle())
-            .onTapGesture(perform: reseed)
-            .onLongPressGesture(minimumDuration: 0.5, perform: randomise)
-            .accessibilityElement()
+        Button(action: reseed) { Image(systemName: "die.face.5.fill") }
+            .buttonStyle(IconButtonStyle(background: Color.card, shadow: true))
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in randomise() })
             .accessibilityLabel("Dado")
             .accessibilityHint("Otros detalles. Mantén pulsado para hacerlo todo al azar.")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { reseed() }
             .accessibilityAction(named: "Todo al azar") { randomise() }
     }
 }
