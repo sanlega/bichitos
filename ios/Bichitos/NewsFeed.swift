@@ -46,7 +46,7 @@ struct NewsFeed: View {
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                HStack(spacing: 0) {
+                HStack(spacing: -20) { // the canvas has empty margins: pairs overlap a bit
                     ForEach(item.bichitos, id: \.self) { id in
                         if let b = world.bichito(id) ?? world.notes.first(where: { $0.bichito.id == id })?.bichito {
                             Image(decorative: Sprites.shared.cgImage(SpriteKey(recipe: b.recipe, squash: Look.squashLevel(1),
@@ -64,6 +64,7 @@ struct NewsFeed: View {
                             .background(Circle().fill(Color.fill))
                     }
                 }
+                .frame(width: CGFloat(Sprites.width) * 4 - 20) // room for a pair, so every line starts at the same x
                 VStack(alignment: .leading, spacing: 2) {
                     Text(world.newsText(item, world.language))
                         .font(.system(.body, design: .rounded, weight: .semibold))
