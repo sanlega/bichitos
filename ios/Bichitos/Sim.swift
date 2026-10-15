@@ -156,7 +156,7 @@ struct World: Codable, Equatable {
             let fx = roll(0.1...0.9), fy = roll(0.1...0.9)
             p = Vec(r.x + fx * r.w, r.y + fy * r.h)
         }
-        p = clamp(p, recipe.radius)
+        p = terrain.nearestWalkable(clamp(p, recipe.radius))
         let heading = roll(0...(2 * Double.pi))
         let generated = Names.make(seed: recipe.seed, language: language, taken: takenNames)
         let b = Bichito(id: id, recipe: recipe, name: name ?? generated.name, description: description ?? generated.description,
@@ -210,6 +210,7 @@ struct World: Codable, Equatable {
     mutating func release(_ id: Int, velocity v: Vec) {
         guard let i = index(of: id) else { return }
         bichitos[i].enter(.wander, for: 1)
+        bichitos[i].pos = terrain.nearestWalkable(bichitos[i].pos) // dropped over water or rock: lands on the shore
         bichitos[i].vel = v
         bichitos[i].dizzy = min(3, v.length / 300)
     }
@@ -219,7 +220,7 @@ struct World: Codable, Equatable {
     mutating func dropFood(at p: Vec, kind: Food.Kind = .fruta) -> Int {
         if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 && $0.bichito.favorite == kind }) { recover(n) }
         let id = newId()
-        foods.append(Food(id: id, pos: clamp(p, 4), kind: kind))
+        foods.append(Food(id: id, pos: terrain.nearestWalkable(clamp(p, 4)), kind: kind))
         for i in bichitos.indices where bichitos[i].needs.hunger < 0.7 && bichitos[i].mood.isFree {
             bichitos[i].enter(.eat, for: 30, target: id)
         }
@@ -253,18 +254,19 @@ struct World: Codable, Equatable {
         date += World.dt
         let watched = visibleRect != nil
         let walls = bounds // once per tick, not per body: districts only unlock after the moves
+        let ground = terrain
         if watched {
             for i in bichitos.indices {
                 let visible = isVisible(bichitos[i].pos)
                 if !visible && (tickCount + i) % World.lod != 0 { continue }
-                update(i, visible ? World.dt : World.dt * Double(World.lod), walls)
+                update(i, visible ? World.dt : World.dt * Double(World.lod), walls, ground)
             }
         } else {
             // Only every lod-th bichito is due: jump straight to them instead of skipping the rest one by one.
             let lod = World.lod, h = World.dt * Double(World.lod)
             var i = (lod - tickCount % lod) % lod
             while i < bichitos.count {
-                update(i, h, walls)
+                update(i, h, walls, ground)
                 i += lod
             }
         }
@@ -303,9 +305,10 @@ struct World: Codable, Equatable {
 
     // MARK: - Brain and body
 
-    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect) {
+    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect, _ ground: Terrain) {
         var b = bichitos[i]
         guard b.mood != .held else { return }
+        b.pos = ground.nearestWalkable(b.pos) // only moves one that something else left in water or rock
         let r = b.recipe
         b.timer -= h
         b.calm -= h
@@ -365,14 +368,20 @@ struct World: Codable, Equatable {
         case .sleep, .happy, .held:
             break
         }
+        if dir != .zero {
+            let d = steer(dir, b, ground)
+            if d != dir { dir = d; if b.mood == .wander { b.heading = atan2(d.y, d.x) } }
+        }
 
         if b.dizzy > 0 {
             b.vel = b.vel * max(0, 1 - 2.5 * h)
         } else {
             b.vel = b.vel + (dir * (r.speed * pace) - b.vel) * min(1, 6 * h)
         }
+        let from = b.pos
         b.pos = b.pos + b.vel * h
         bounce(&b, walls)
+        if !ground.walkable(b.pos) { shore(&b, from, ground) }
         if b.timer <= 0 { decide(&b) }
         bichitos[i] = b
     }
@@ -403,6 +412,35 @@ struct World: Codable, Equatable {
         if b.pos.y > y1 { b.pos.y = y1; b.vel.y = -abs(b.vel.y) * 0.6; b.heading = -b.heading }
     }
 
+    private static let detours = [0.6, 1.2, 1.8, 2.4, 3.0] // radians, tried on each side in turn
+
+    /// Water or rock just ahead: the first clear heading turning away from it, each bichito favouring its own side.
+    /// A simple detour, no pathfinding: it slides along the shore and may give up in a dead end.
+    private func steer(_ dir: Vec, _ b: Bichito, _ ground: Terrain) -> Vec {
+        let ahead = b.recipe.radius + Terrain.cell
+        guard !ground.walkable(b.pos + dir * ahead) else { return dir }
+        let side = b.id % 2 == 0 ? 1.0 : -1.0
+        for a in World.detours {
+            for k in 0..<2 {
+                let s = k == 0 ? side : -side, c = cos(a * s), n = sin(a * s)
+                let d = Vec(dir.x * c - dir.y * n, dir.x * n + dir.y * c)
+                if ground.walkable(b.pos + d * ahead) { return d }
+            }
+        }
+        return dir
+    }
+
+    /// Never into water or rock: slide along it on one axis, bouncing off like off the walls, or stop where it was.
+    private func shore(_ b: inout Bichito, _ from: Vec, _ ground: Terrain) {
+        if ground.walkable(Vec(b.pos.x, from.y)) {
+            b.pos.y = from.y; b.vel.y = -b.vel.y * 0.6
+        } else if ground.walkable(Vec(from.x, b.pos.y)) {
+            b.pos.x = from.x; b.vel.x = -b.vel.x * 0.6
+        } else {
+            b.pos = from; b.vel = b.vel * -0.6
+        }
+    }
+
     private func isVisible(_ p: Vec) -> Bool {
         guard let v = visibleRect else { return false }
         return v.contains(p)
@@ -413,6 +451,7 @@ struct World: Codable, Equatable {
         let ids = bichitos.indices.filter { bichitos[$0].mood != .held && isVisible(bichitos[$0].pos) }
         guard ids.count > 1 else { return }
         let grid = SpatialHash(cell: 64, points: ids.map { bichitos[$0].pos })
+        let ground = terrain
         for (a, i) in ids.enumerated() {
             grid.forEach(near: bichitos[i].pos) { k in
                 guard k > a else { return false }
@@ -425,8 +464,8 @@ struct World: Codable, Equatable {
                 let push = n * ((reach - len) / 2)
                 let p1 = clamp(bichitos[i].pos - push, bichitos[i].recipe.radius)
                 let p2 = clamp(bichitos[j].pos + push, bichitos[j].recipe.radius)
-                bichitos[i].pos = p1
-                bichitos[j].pos = p2
+                if ground.walkable(p1) { bichitos[i].pos = p1 } // pushed against the shore, it stays put
+                if ground.walkable(p2) { bichitos[j].pos = p2 }
                 if fighting(bichitos[i], bichitos[j]) {
                     let bonk = n * 160
                     bichitos[i].vel = bichitos[i].vel - bonk
@@ -536,7 +575,7 @@ struct World: Codable, Equatable {
               bichitos.count + eggs.count < World.maxPopulation else { return }
         let id = newId()
         let recipe = Recipe.child(of: a.recipe, and: b.recipe, using: &rng)
-        let pos = clamp((a.pos + b.pos) * 0.5, 8)
+        let pos = terrain.nearestWalkable(clamp((a.pos + b.pos) * 0.5, 8))
         eggs.append(Egg(id: id, pos: pos, parents: [a.id, b.id], recipe: recipe, hatchIn: World.hatchTime))
         bichitos[i].breedCooldown = World.breedCooldown
         bichitos[j].breedCooldown = World.breedCooldown
