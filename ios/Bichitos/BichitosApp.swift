@@ -53,6 +53,10 @@ enum Terrarium {
             w.bichitos[7].parents = [w.bichitos[2].id, w.bichitos[3].id]
             w.bichitos[6].parents = [w.bichitos[7].id]
             w.eggs.append(Egg(id: 9000, pos: at(0.3, 4), parents: [], recipe: recipes[0], hatchIn: 600))
+            if CommandLine.arguments.contains("-screenshot-toast") { // the love pair's egg, then a birth queued behind it
+                w.record(.eggLaid(w.bichitos[2].id, w.bichitos[3].id))
+                w.record(.hatched(w.bichitos[6].id))
+            }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
         }
@@ -68,7 +72,8 @@ enum Terrarium {
         for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
         let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
         return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
-            w.bichitos[leaving].district = 1 // after the scene noted its old home, so the move is announced
+            w.bichitos[leaving].district = 1
+            w.record(.emigrated(w.bichitos[leaving].id, 1)) // so the move gets its toast
         }
     }
 

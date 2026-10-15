@@ -21,20 +21,24 @@ struct WorldView: View {
                 Text(scene.title)
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.ink)
-                if let news = scene.news {
-                    Text(news)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.ink)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.card).floating())
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                if let event = scene.toast {
+                    Button { scene.onToastTap?(event) } label: {
+                        Text(scene.world.toastText(event))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.card).floating())
+                    }
+                    .buttonStyle(.plain)
+                    .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
             }
             .padding(.top, 8)
-            .allowsHitTesting(false)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             VStack(spacing: 8) {
                 Spacer()
                 if let id = peek {

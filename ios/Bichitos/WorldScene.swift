@@ -23,11 +23,12 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Name of the district the camera is looking at, for the title on top.
     @Published private(set) var title = ""
-    /// A short line about something the map just did (a bichito moving out, a new district).
-    @Published private(set) var news: String? = nil
-    private var newsUntil = 0.0
-    private var homes: [Int: Int] = [:]  // bichito → home district, to notice emigrations
-    private var knownDistricts: Int
+    /// The live event on the toast under the title, if any.
+    @Published private(set) var toast: WorldEvent? = nil
+    /// Tapping the toast (#51 takes the camera there).
+    var onToastTap: ((WorldEvent) -> Void)?
+    private var toasts = Toasts()
+    private var seenEvents: Int
 
     private var lens: Camera
     private var pinchFrom = 3.0
@@ -62,8 +63,9 @@ final class WorldScene: SKScene, ObservableObject {
         self.world = world
         self.populate = populate
         lens = Camera(center: focus ?? world.districts[0].rect.center, scale: Camera.Level.district.scale)
-        knownDistricts = world.districts.count
-        homes = Dictionary(world.bichitos.map { ($0.id, $0.district) }, uniquingKeysWith: { a, _ in a })
+        seenEvents = world.eventTotal
+        // `-screenshot-toast` (CI): toasts stay up so the capture finds one.
+        if CommandLine.arguments.contains("-screenshot-toast") { toasts.duration = 600 }
         super.init(size: CGSize(width: 1, height: 1))
         scaleMode = .resizeFill
         anchorPoint = .zero
@@ -76,6 +78,7 @@ final class WorldScene: SKScene, ObservableObject {
     func fastForwarded(to world: World) {
         self.world = world
         previous = [:]
+        seenEvents = world.eventTotal // what happened while away goes to the summary, not to toasts
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
@@ -209,29 +212,17 @@ final class WorldScene: SKScene, ObservableObject {
         fit()
         let name = world.districts[world.district(at: lens.center)].name(world.language)
         if name != title { title = name }
-        if news != nil, currentTime > newsUntil { news = nil }
-        if world.districts.count > knownDistricts {
-            knownDistricts = world.districts.count
-            let place = world.districts[knownDistricts - 1].name(world.language)
-            announce(world.language == .es ? "Se abrió un barrio nuevo: \(place)" : "A new district opened: \(place)", at: currentTime)
-        }
-        draw(alpha: pending / World.dt, dt: dt, now: currentTime)
+        for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) { toasts.push(e, at: currentTime) }
+        seenEvents = world.eventTotal
+        toasts.update(at: currentTime)
+        if toasts.current != toast { toast = toasts.current }
+        draw(alpha: pending / World.dt, dt: dt)
     }
 
-    private func announce(_ line: String, at time: TimeInterval) {
-        news = line
-        newsUntil = time + 5
-    }
-
-    private func draw(alpha: Double, dt: Double, now: TimeInterval) {
+    private func draw(alpha: Double, dt: Double) {
         drawDistricts()
         var alive = Set<Int>()
         for b in world.bichitos {
-            if let old = homes[b.id], old != b.district {
-                let place = world.districts[b.district].name(world.language)
-                announce(world.language == .es ? "\(b.name) se muda a \(place)" : "\(b.name) is moving to \(place)", at: now)
-            }
-            homes[b.id] = b.district
             alive.insert(b.id)
             let node: BichitoNode
             if let n = bichitoNodes[b.id] {
@@ -253,7 +244,6 @@ final class WorldScene: SKScene, ObservableObject {
         for (id, node) in bichitoNodes where !alive.contains(id) {
             node.removeFromParent()
             bichitoNodes[id] = nil
-            homes[id] = nil
         }
         sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
         sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: makeEgg)
