@@ -36,8 +36,8 @@ enum Maqueta {
     }
 
     /// The y-sort itself: lower on screen (a larger world `y` of the feet or the base) is closer, so drawn on top.
-    /// `top` is the world y at the top of the screen; the result stays near 1000, under labels and bubbles (+100).
-    static func depth(_ y: Double, top: Double, unit: Double) -> Double { 1000 + (y - top) * unit / 10 }
+    /// `top` is the world y at the top of the screen; the result stays within ~10 of 1000 on screen, so names (+50) and bubbles (+100) stay over every building.
+    static func depth(_ y: Double, top: Double, unit: Double) -> Double { 1000 + (y - top) * unit / 100 }
 
     /// A bichito sorts by its feet, a bit below the body centre the simulation tracks.
     static func feet(_ pos: Vec, radius: Double) -> Double { pos.y + radius * 0.6 }
