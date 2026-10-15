@@ -68,7 +68,8 @@ struct PenView<Content: View>: View {
     private func open() async {
         let args = CommandLine.arguments
         if args.contains("-screenshot") {
-            scene = Terrarium.screenshot()
+            // `-border` stages the edge between two districts instead.
+            scene = args.contains("-border") ? Terrarium.border() : Terrarium.screenshot()
             return
         }
         let pen = self.pen
