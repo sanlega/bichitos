@@ -61,7 +61,7 @@ final class GestureTests: XCTestCase {
     }
 
     func testTossStaysOnTheMap() {
-        var w = World(seed: 5)
+        var w = World(testSeed: 5)
         var rng = SeededRNG(seed: 5)
         let corner = Vec(w.bounds.x + 20, w.bounds.y + 20)
         let ids = (0..<6).map { _ in w.add(Recipe.random(using: &rng), at: corner) }
@@ -75,7 +75,7 @@ final class GestureTests: XCTestCase {
     }
 
     func testVoiceLabelSaysNameAndState() {
-        var w = World(seed: 6)
+        var w = World(testSeed: 6)
         var rng = SeededRNG(seed: 6)
         let id = w.add(Recipe.random(using: &rng), at: Vec(300, 300), name: "Pocholo")
         var b = try! XCTUnwrap(w.bichito(id))
@@ -87,7 +87,7 @@ final class GestureTests: XCTestCase {
     }
 
     func testFollowHoldsUntilThePanAndStopsWhenItIsGone() {
-        var w = World(seed: 3)
+        var w = World(testSeed: 3)
         var rng = SeededRNG(seed: 3)
         let id = w.add(Recipe.random(using: &rng), at: Vec(300, 400))
         var f = Follow()
@@ -115,7 +115,7 @@ final class GestureTests: XCTestCase {
     }
 
     func testHitPicksTheClosestBody() {
-        var w = World(seed: 1)
+        var w = World(testSeed: 1)
         var rng = SeededRNG(seed: 1)
         let a = w.add(Recipe.random(using: &rng), at: Vec(200, 200))
         let b = w.add(Recipe.random(using: &rng), at: Vec(240, 200))
@@ -125,7 +125,7 @@ final class GestureTests: XCTestCase {
     }
 
     func testThrownBichitoGetsDizzyAndSlowsDown() {
-        var w = World(seed: 2)
+        var w = World(testSeed: 2)
         var rng = SeededRNG(seed: 2)
         let id = w.add(Recipe.random(using: &rng), at: Vec(500, 300))
         w.visibleRect = w.bounds

@@ -6,7 +6,7 @@ final class TerrenoTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func world(seed: UInt64, count: Int) -> World {
-        var w = World(seed: seed, date: start)
+        var w = World(testSeed: seed, date: start)
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w

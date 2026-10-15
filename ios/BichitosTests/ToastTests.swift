@@ -45,7 +45,7 @@ final class ToastTests: XCTestCase {
     }
 
     func testLiveEventsAdvanceTheCursorAndHaveText() {
-        var w = World(seed: 1, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var w = World(testSeed: 1, date: Date(timeIntervalSince1970: 1_700_000_000))
         var rng = SeededRNG(seed: 1)
         let a = w.add(Recipe.random(using: &rng)), b = w.add(Recipe.random(using: &rng))
         let before = w.eventTotal

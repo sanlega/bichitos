@@ -5,7 +5,7 @@ final class NoticiasTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func pair() -> (World, Int, Int) {
-        var w = World(seed: 7, date: start)
+        var w = World(testSeed: 7, date: start)
         var rng = SeededRNG(seed: 7)
         let a = w.add(Recipe.random(using: &rng), at: Vec(100, 100), name: "Chencho")
         let b = w.add(Recipe.random(using: &rng), at: Vec(300, 300), name: "Ramona")
@@ -40,7 +40,7 @@ final class NoticiasTests: XCTestCase {
     }
 
     func testRecordedEventsBecomeNews() {
-        var w = World(seed: 3, date: start)
+        var w = World(testSeed: 3, date: start)
         var rng = SeededRNG(seed: 3)
         for _ in 0...World.capacity { w.add(Recipe.random(using: &rng)) } // one too many: opens district 1
         let item = w.news.items.first
@@ -62,7 +62,7 @@ final class NoticiasTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let pen = Pen(url: dir.appendingPathComponent("pen.json"))
+        let pen = Pen(url: dir.appendingPathComponent("pen.json"), timeZone: World.daytime)
 
         var (w, a, b) = pair()
         w.news.add(.fought(a, b), date: start, place: Vec(2, 3))

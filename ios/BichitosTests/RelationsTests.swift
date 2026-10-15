@@ -3,7 +3,7 @@ import XCTest
 
 final class RelationsTests: XCTestCase {
     private func world(_ count: Int) -> World {
-        var w = World(seed: 2)
+        var w = World(testSeed: 2)
         var rng = SeededRNG(seed: 2)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w
