@@ -17,11 +17,15 @@ struct BichitosApp: App {
 struct WorldView: View {
     let scene: WorldScene
     @State private var creating = false
+    @State private var card: Int? // id of the bichito whose card is open
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             SpriteView(scene: scene)
                 .ignoresSafeArea()
+                .sheet(isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } })) {
+                    if let card { BichitoCard(scene: scene, id: card) }
+                }
             // shortcut: temporary entry point; when the bottom tray's "new bichito" button lands, it calls openCreator and this goes.
             Button(action: openCreator) {
                 Image(systemName: "plus")
@@ -39,7 +43,14 @@ struct WorldView: View {
                 scene.drop(recipe, name: name, description: description)
             }
         }
-        .onAppear { if CommandLine.arguments.contains("-screenshot-editor") { openCreator() } }
+        .onAppear {
+            scene.onLongPress = { card = $0 }
+            if CommandLine.arguments.contains("-screenshot-editor") { openCreator() }
+            if CommandLine.arguments.contains("-screenshot-card") {
+                // After the staged world is populated: the one with friends, rivals and family.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
+            }
+        }
     }
 
     /// Opens the editor; Soltar drops the new bichito into the world.
@@ -70,6 +81,10 @@ enum Terrarium {
             w.bichitos[5].dizzy = 30
             w.bichitos[6].needs.hunger = 0.2
             w.bichitos[7].needs = Bichito.Needs(hunger: 0.5, sleep: 0.4, affection: 0.2)
+            // Its card (-screenshot-card) shows friends, rivals, parents and a child.
+            w.bichitos[7].affinity = [w.bichitos[2].id: 0.8, w.bichitos[4].id: 0.4, w.bichitos[5].id: -0.6]
+            w.bichitos[7].parents = [w.bichitos[2].id, w.bichitos[3].id]
+            w.bichitos[6].parents = [w.bichitos[7].id]
             let center = visible.center
             w.dropFood(at: Vec(center.x + 60, center.y + 40))
             w.eggs.append(Egg(id: 9000, pos: Vec(center.x - 90, visible.y + visible.h - 140), parents: [],

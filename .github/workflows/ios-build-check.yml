@@ -71,6 +71,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/editor.png
 
+      - name: Screenshot of a bichito's card
+        # -screenshot-card opens the card of a staged bichito with friends, rivals and family.
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-card
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/card.png
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4

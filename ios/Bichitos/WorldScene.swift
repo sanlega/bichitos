@@ -65,6 +65,33 @@ final class WorldScene: SKScene {
         dropping.insert(id)
     }
 
+    func rename(_ id: Int, to name: String) { world.rename(id, to: name) }
+
+    // MARK: - Long press → card
+
+    /// Called with the id of the bichito under a long press.
+    var onLongPress: ((Int) -> Void)?
+    private var longPress: UILongPressGestureRecognizer?
+
+    override func didMove(to view: SKView) {
+        super.didMove(to: view)
+        guard longPress == nil else { return }
+        let g = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        view.addGestureRecognizer(g)
+        longPress = g
+    }
+
+    @objc private func longPressed(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, let view else { return }
+        let p = convertPoint(fromView: g.location(in: view))
+        // The body's centre sits about 12 sprite pixels above the feet (the node's origin).
+        let hit = bichitoNodes
+            .map { (id: $0.key, d: hypot($0.value.position.x - p.x, $0.value.position.y + 12 * pixel - p.y)) }
+            .filter { $0.d < 16 * pixel }
+            .min { $0.d < $1.d }
+        if let hit { onLongPress?(hit.id) }
+    }
+
     // MARK: - Frame
 
     override func update(_ currentTime: TimeInterval) {
@@ -184,6 +211,7 @@ final class BichitoNode: SKNode {
     private var lastMood: Bichito.Mood
     private var key: SpriteKey?
     private var shownBubble: String?
+    private var shownName = ""
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
@@ -193,11 +221,7 @@ final class BichitoNode: SKNode {
         sprite.anchorPoint = CGPoint(x: 0.5, y: 1 / CGFloat(Sprites.height)) // feet on the node's origin, shadow below
         addChild(sprite)
 
-        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
-        label.attributedText = NSAttributedString(string: b.name, attributes: [
-            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
-            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
-        ])
+        show(name: b.name)
         label.verticalAlignmentMode = .top
         label.zPosition = 50
         addChild(label)
@@ -231,6 +255,15 @@ final class BichitoNode: SKNode {
         bubble.path = path
         bubble.position = CGPoint(x: 0, y: 26 * pixel)
         bubbleText.position = CGPoint(x: 0, y: tail + h / 2)
+    }
+
+    private func show(name: String) {
+        shownName = name
+        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
+        label.attributedText = NSAttributedString(string: name, attributes: [
+            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
+            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
+        ])
     }
 
     /// Falls from `height` points above its feet, then squashes on landing and springs back.
@@ -276,6 +309,7 @@ final class BichitoNode: SKNode {
             key = next
             sprite.texture = Sprites.shared.texture(next)
         }
+        if b.name != shownName { show(name: b.name) }
         let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy)
         if text != shownBubble {
             shownBubble = text
