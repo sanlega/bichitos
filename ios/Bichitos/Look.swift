@@ -135,7 +135,7 @@ extension Look {
             case .zzz, .sweat: hex = 0x6DB3FF
             case .anger: hex = 0xF2405A
             case .alert: hex = 0xFF6B4A
-            case .hunger: hex = 0xC8CCD8
+            case .hunger: hex = 0xB3BCD0
             case .egg: hex = 0xF2E2C4
             case .note: hex = 0xAE97F2
             case .dizzy: hex = 0xFFD23F
