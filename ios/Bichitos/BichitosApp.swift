@@ -5,36 +5,45 @@ import SwiftUI
 struct BichitosApp: App {
     // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same.
     @State private var scene = CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
-    @State private var creating = false
 
     var body: some Scene {
         WindowGroup {
-            ZStack(alignment: .topTrailing) {
-                SpriteView(scene: scene)
-                    .ignoresSafeArea()
-                // shortcut: temporary entry point; when the bottom tray's "new bichito" button lands, it calls openCreator and this goes.
-                Button(action: openCreator) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color.ink)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(Color.white).shadow(color: Color.ink.opacity(0.08), radius: 8, y: 4))
-                }
-                .accessibilityLabel("Nuevo bichito")
-                .padding(16)
-            }
-            .sheet(isPresented: $creating) {
-                CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
-                             language: scene.world.language) { recipe, name, description in
-                    scene.drop(recipe, name: name, description: description)
-                }
-            }
-            .onAppear { if CommandLine.arguments.contains("-screenshot-editor") { openCreator() } }
+            WorldView(scene: scene)
         }
+    }
+}
+
+/// The world on screen with its sheets. Self-contained, so it can sit inside any wrapper that owns the scene.
+struct WorldView: View {
+    let scene: WorldScene
+    @State private var creating = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            SpriteView(scene: scene)
+                .ignoresSafeArea()
+            // shortcut: temporary entry point; when the bottom tray's "new bichito" button lands, it calls openCreator and this goes.
+            Button(action: openCreator) {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color.ink)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.white).shadow(color: Color.ink.opacity(0.08), radius: 8, y: 4))
+            }
+            .accessibilityLabel("Nuevo bichito")
+            .padding(16)
+        }
+        .sheet(isPresented: $creating) {
+            CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
+                         language: scene.world.language) { recipe, name, description in
+                scene.drop(recipe, name: name, description: description)
+            }
+        }
+        .onAppear { if CommandLine.arguments.contains("-screenshot-editor") { openCreator() } }
     }
 
     /// Opens the editor; Soltar drops the new bichito into the world.
-    private func openCreator() { creating = true }
+    func openCreator() { creating = true }
 }
 
 /// Starting worlds.

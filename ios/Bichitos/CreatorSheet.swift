@@ -49,7 +49,7 @@ struct CreatorSheet: View {
 
     private var preview: some View {
         ZStack(alignment: .bottomTrailing) {
-            LiveSprite(recipe: recipe)
+            LiveSprite(recipe: recipe, pixel: 7)
                 .frame(maxWidth: .infinity, minHeight: 260)
                 .background(RoundedRectangle(cornerRadius: 20).fill(Color.mist))
             Dice(reseed: { recipe.seed = .random(in: 1...UInt64.max) }, randomise: randomiseAll)
