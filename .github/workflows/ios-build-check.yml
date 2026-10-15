@@ -73,9 +73,9 @@ jobs:
           sleep 8
           xcrun simctl io "$SIM" screenshot screenshots/away.png
           xcrun simctl spawn "$SIM" log show --last 2m --style compact --predicate 'subsystem == "com.santilega.bichitos"' || true
-          # Same world, but every bubble is a phrase from the voice (#14).
+          # Same world, but every bubble is a phrase from the voice (#14); phrases show from Calle (#32).
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
-          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-talk
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-talk -screenshot-zoom 5
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/talk.png
           # Same world at other zoom levels (#30): Calle (5 pt per u) and Mapa (1 pt per u).

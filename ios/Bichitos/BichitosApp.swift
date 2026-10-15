@@ -23,9 +23,10 @@ enum Terrarium {
 
     static func screenshot() -> WorldScene {
         WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, v in
-            // Fixed slots: 5 rows, each tall enough for bubble + sprite + name, clear of the status bar and home indicator.
+            // Fixed slots: 4 rows of bichitos, each tall enough for bubble + sprite + name, clear of the status bar,
+            // then a row for the egg and the note, above the tray.
             func at(_ fx: Double, _ row: Int) -> Vec {
-                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.925][row])
+                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.83][row])
             }
             var rng = SeededRNG(seed: 7)
             let recipes = (0..<9).map { _ in Recipe.random(using: &rng) }
