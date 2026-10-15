@@ -82,7 +82,8 @@ final class GestureTests: XCTestCase {
         b.mood = .sleep
         b.dizzy = 0
         b.needs = .init(hunger: 0.1, sleep: 1, affection: 1)
-        XCTAssertEqual(b.voiceLabel, "Pocholo, durmiendo, con hambre")
+        XCTAssertEqual(b.voiceLabel(.es), "Pocholo, durmiendo, con hambre")
+        XCTAssertEqual(b.voiceLabel(.en), "Pocholo, sleeping, hungry")
     }
 
     func testFollowHoldsUntilThePanAndStopsWhenItIsGone() {

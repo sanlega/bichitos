@@ -13,7 +13,7 @@ struct NewsFeed: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(es ? "Noticias" : "News")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .font(.system(.title3, design: .rounded, weight: .heavy))
                         .accessibilityAddTraits(.isHeader)
                         .padding(.bottom, 8)
                     if world.news.items.isEmpty {
@@ -59,9 +59,10 @@ struct NewsFeed: View {
                     }
                     if item.bichitos.isEmpty { // a new district: no one to show
                         Image(systemName: "newspaper.fill")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(.body, weight: .semibold))
                             .frame(width: 44, height: 44)
                             .background(Circle().fill(Color.fill))
+                            .accessibilityHidden(true)
                     }
                 }
                 .frame(width: CGFloat(Sprites.width) * 4 - 20) // room for a pair, so every line starts at the same x

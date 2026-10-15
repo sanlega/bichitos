@@ -144,12 +144,13 @@ struct AwaySummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(language == .es ? "Mientras no estabas" : "While you were away")
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.system(.title3, design: .rounded, weight: .heavy))
+                .accessibilityAddTraits(.isHeader)
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(lines, id: \.self) { line in
                         Text(line)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

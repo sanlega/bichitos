@@ -40,7 +40,7 @@ private struct Press: ViewModifier {
         content
             .scaleEffect(pressed && !reduceMotion ? 0.94 : 1)
             .opacity(enabled ? (pressed && reduceMotion ? 0.7 : 1) : 0.35)
-            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.7), value: pressed)
+            .animation(.ui(reduceMotion: reduceMotion), value: pressed)
             .onChange(of: pressed) { _, now in if now { Haptics.tap() } }
     }
 }
@@ -134,11 +134,11 @@ struct Chip: View {
 enum Need: CaseIterable {
     case hunger, sleep, love
 
-    var name: String {
+    func name(es: Bool = true) -> String {
         switch self {
-        case .hunger: "Comida"
-        case .sleep: "Descanso"
-        case .love: "Cariño"
+        case .hunger: es ? "Comida" : "Food"
+        case .sleep: es ? "Descanso" : "Rest"
+        case .love: es ? "Cariño" : "Love"
         }
     }
 
@@ -172,10 +172,12 @@ enum Need: CaseIterable {
 struct NeedBar: View {
     let need: Need
     let value: Double
+    let es: Bool
 
-    init(_ need: Need, value: Double) {
+    init(_ need: Need, value: Double, es: Bool = true) {
         self.need = need
         self.value = value
+        self.es = es
     }
 
     private var percent: Int { Int((min(max(value, 0), 1) * 100).rounded()) }
@@ -202,7 +204,7 @@ struct NeedBar: View {
                 .frame(minWidth: 32, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(need.name)
-        .accessibilityValue("\(percent) de 100")
+        .accessibilityLabel(need.name(es: es))
+        .accessibilityValue(es ? "\(percent) de 100" : "\(percent) of 100")
     }
 }

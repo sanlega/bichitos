@@ -55,7 +55,7 @@ struct CreatorSheet: View {
             LiveSprite(recipe: recipe, pixel: 7)
                 .frame(maxWidth: .infinity, minHeight: 260)
                 .background(RoundedRectangle(cornerRadius: 20).fill(Color.mist))
-            Dice(reseed: { recipe.seed = .random(in: 1...UInt64.max) }, randomise: randomiseAll)
+            Dice(es: language == .es, reseed: { recipe.seed = .random(in: 1...UInt64.max) }, randomise: randomiseAll)
                 .padding(12)
         }
         .padding(.horizontal, 16)
@@ -64,7 +64,7 @@ struct CreatorSheet: View {
     private var naming: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                TextField("Nombre", text: $name)
+                TextField(language == .es ? "Nombre" : "Name", text: $name)
                     .font(.system(.title3, design: .rounded, weight: .heavy))
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
@@ -72,7 +72,7 @@ struct CreatorSheet: View {
                     .onChange(of: name) { _, typed in if typed.count > 16 { name = String(typed.prefix(16)) } }
                 Button(action: rerollText) { Image(systemName: "arrow.triangle.2.circlepath") }
                     .buttonStyle(IconButtonStyle())
-                .accessibilityLabel("Otro nombre y descripción")
+                .accessibilityLabel(language == .es ? "Otro nombre y descripción" : "Another name and description")
             }
             Text(description)
                 .font(.system(.subheadline, design: .rounded, weight: .medium).italic())
@@ -112,7 +112,7 @@ struct CreatorSheet: View {
                         }
                     }
                 } label: {
-                    Text("Ajustes finos")
+                    Text(language == .es ? "Ajustes finos" : "Fine-tuning")
                         .font(.system(.footnote, design: .rounded, weight: .medium))
                         .foregroundStyle(Color.inkDim)
                 }
@@ -127,7 +127,7 @@ struct CreatorSheet: View {
             onRelease(recipe, finalName, description)
             dismiss()
         } label: {
-            Text("Soltar")
+            Text(language == .es ? "Soltar" : "Release")
         }
         .buttonStyle(PrimaryButtonStyle())
         .padding(.horizontal, 16)
@@ -149,6 +149,7 @@ struct CreatorSheet: View {
 
 /// DESIGN.md `Dice`: tap = new seed (same choices, other details), hold = everything random.
 struct Dice: View {
+    var es = true
     let reseed: () -> Void
     let randomise: () -> Void
 
@@ -156,8 +157,9 @@ struct Dice: View {
         Button(action: reseed) { Image(systemName: "die.face.5.fill") }
             .buttonStyle(IconButtonStyle(background: Color.card, shadow: true))
             .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in randomise() })
-            .accessibilityLabel("Dado")
-            .accessibilityHint("Otros detalles. Mantén pulsado para hacerlo todo al azar.")
-            .accessibilityAction(named: "Todo al azar") { randomise() }
+            .accessibilityLabel(es ? "Dado" : "Dice")
+            .accessibilityHint(es ? "Otros detalles. Mantén pulsado para hacerlo todo al azar."
+                                  : "Other details. Hold to make everything random.")
+            .accessibilityAction(named: es ? "Todo al azar" : "All random") { randomise() }
     }
 }
