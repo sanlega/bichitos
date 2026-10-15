@@ -5,20 +5,42 @@ enum Ink {
     static let mist = UIColor(red: 0xF3 / 255, green: 0xF1 / 255, blue: 0xEC / 255, alpha: 1)
     static let ink = UIColor(red: 0x2B / 255, green: 0x2A / 255, blue: 0x33 / 255, alpha: 1)
     static let accent = UIColor(red: 1, green: 0x6B / 255, blue: 0x4A / 255, alpha: 1)
+
+    /// District tint: its own hue mixed 8% over mist, so districts tell apart without competing with the bichitos.
+    static func tint(_ district: Int) -> UIColor {
+        let hues: [UInt32] = [0x5AA9E6, 0xE6B85A, 0xA98BE6, 0xE68A5A, 0x5AE6A9, 0xE65AA9, 0x5AD0E6, 0x9BC25A]
+        let h = hues[district % hues.count]
+        func mix(_ shift: UInt32, _ base: CGFloat) -> CGFloat { base * 0.92 + CGFloat((h >> shift) & 0xFF) / 255 * 0.08 }
+        return UIColor(red: mix(16, 0xF3 / 255), green: mix(8, 0xF1 / 255), blue: mix(0, 0xEC / 255), alpha: 1)
+    }
 }
 
 /// Draws the world. The simulation decides everything; this only advances it in 20 Hz ticks and paints
 /// positions interpolated between the last two ticks.
-final class WorldScene: SKScene {
+final class WorldScene: SKScene, ObservableObject {
     private(set) var world: World
     /// Called once, when the first visible rect is known, to put the starting bichitos on screen.
     private var populate: ((inout World, Rect) -> Void)?
 
+    /// Name of the district the camera is looking at, for the title on top.
+    @Published private(set) var title = ""
+    /// A short line about something the map just did (a bichito moving out, a new district).
+    @Published private(set) var news: String? = nil
+    private var newsUntil = 0.0
+    private var homes: [Int: Int] = [:]  // bichito → home district, to notice emigrations
+    private var knownDistricts: Int
+
+    private var lens: Camera
+    private var pinchFrom = 3
+    private var districtNodes: [SKSpriteNode] = []
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
-    private var pixel: CGFloat = 2
-    /// A sprite pixel is 2 world units, so a bichito's drawn body matches its collision radius.
-    private var unit: CGFloat { pixel / 2 }
-    private var origin = Vec.zero // world point at the top-left of the screen
+    private var pixel: CGFloat { CGFloat(lens.pixel) }
+    private var unit: CGFloat { CGFloat(lens.unit) }
+    private var screenSize: Vec { Vec(Double(size.width), Double(size.height)) }
+    private var origin: Vec { // world point at the top-left of the screen
+        let r = lens.rect(screenSize)
+        return Vec(r.x, r.y)
+    }
     private var lastTime: TimeInterval?
     private var pending = 0.0
     private var previous: [Int: Vec] = [:]
@@ -26,11 +48,20 @@ final class WorldScene: SKScene {
     private var foodNodes: [Int: SKNode] = [:]
     private var eggNodes: [Int: SKNode] = [:]
     private var noteNodes: [Int: SKNode] = [:]
+    /// Tray toggle: a tap on the ground drops food.
+    var foodMode = false
+    private var touch: Touch?
+    private var finger: UITouch?
+    private var grabOffset = Vec.zero
     private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
 
-    init(world: World, populate: ((inout World, Rect) -> Void)? = nil) {
+    /// The camera starts on `focus`, or on the centre of the first district.
+    init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
         self.populate = populate
+        lens = Camera(center: focus ?? world.districts[0].rect.center, pixel: Camera.pixels.lowerBound)
+        knownDistricts = world.districts.count
+        homes = Dictionary(world.bichitos.map { ($0.id, $0.district) }, uniquingKeysWith: { a, _ in a })
         super.init(size: CGSize(width: 1, height: 1))
         scaleMode = .resizeFill
         anchorPoint = .zero
@@ -42,18 +73,46 @@ final class WorldScene: SKScene {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }
-        pixel = max(3, (min(size.width, size.height) / 140).rounded(.down))
-        let w = Double(size.width / unit), h = Double(size.height / unit)
-        // shortcut: the camera sits on the centre of the first district; panning and zoom come with the map (#11).
-        let home = world.districts[0].rect.center
-        origin = Vec(home.x - w / 2, home.y - h / 2)
-        let visible = Rect(x: origin.x, y: origin.y, w: w, h: h)
-        world.visibleRect = visible
-        if let populate {
+        if oldSize.width <= 10 { lens.pixel = max(Camera.pixels.lowerBound, Int(min(size.width, size.height) / 140)) }
+        fit()
+        if let populate, let visible = world.visibleRect {
             populate(&world, visible)
             self.populate = nil
         }
+        relayout()
+    }
+
+    /// Keeps the camera on the (possibly grown) map and tells the simulation what is on screen.
+    private func fit() {
+        lens.clamp(to: world.size, screenSize)
+        world.visibleRect = lens.rect(screenSize)
+    }
+
+    /// After a zoom: sizes follow the new pixel; simple things are simply drawn again.
+    private func relayout() {
         for node in bichitoNodes.values { node.layout(pixel: pixel) }
+        for nodes in [foodNodes, eggNodes, noteNodes] { for n in nodes.values { n.removeFromParent() } }
+        foodNodes = [:]
+        eggNodes = [:]
+        noteNodes = [:]
+    }
+
+    override func didMove(to view: SKView) {
+        super.didMove(to: view)
+        guard !(view.gestureRecognizers ?? []).contains(where: { $0 is UIPinchGestureRecognizer }) else { return }
+        view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched)))
+    }
+
+    /// Pinch zoom in whole pixel steps, around the fingers.
+    @objc private func pinched(_ g: UIPinchGestureRecognizer) {
+        if g.state == .began { pinchFrom = lens.pixel }
+        guard g.state == .changed, let view else { return }
+        let target = Int((Double(pinchFrom) * Double(g.scale)).rounded())
+        let before = lens.pixel
+        let f = g.location(in: view)
+        lens.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
+        fit()
+        if lens.pixel != before { relayout() }
     }
 
     // MARK: - New bichitos
@@ -77,12 +136,32 @@ final class WorldScene: SKScene {
             world.tick()
             for b in world.bichitos { bichitoNodes[b.id]?.tick(b) }
         }
-        draw(alpha: pending / World.dt, dt: dt)
+        fit()
+        let name = world.districts[world.district(at: lens.center)].name(world.language)
+        if name != title { title = name }
+        if news != nil, currentTime > newsUntil { news = nil }
+        if world.districts.count > knownDistricts {
+            knownDistricts = world.districts.count
+            let place = world.districts[knownDistricts - 1].name(world.language)
+            announce(world.language == .es ? "Se abrió un barrio nuevo: \(place)" : "A new district opened: \(place)", at: currentTime)
+        }
+        draw(alpha: pending / World.dt, dt: dt, now: currentTime)
     }
 
-    private func draw(alpha: Double, dt: Double) {
+    private func announce(_ line: String, at time: TimeInterval) {
+        news = line
+        newsUntil = time + 5
+    }
+
+    private func draw(alpha: Double, dt: Double, now: TimeInterval) {
+        drawDistricts()
         var alive = Set<Int>()
         for b in world.bichitos {
+            if let old = homes[b.id], old != b.district {
+                let place = world.districts[b.district].name(world.language)
+                announce(world.language == .es ? "\(b.name) se muda a \(place)" : "\(b.name) is moving to \(place)", at: now)
+            }
+            homes[b.id] = b.district
             alive.insert(b.id)
             let node: BichitoNode
             if let n = bichitoNodes[b.id] {
@@ -98,15 +177,43 @@ final class WorldScene: SKScene {
             // Feet sit a bit below the body centre the simulation tracks.
             node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
             node.zPosition = depth(node.position)
-            node.render(b, dt: dt)
+            node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
             node.removeFromParent()
             bichitoNodes[id] = nil
+            homes[id] = nil
         }
         sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
         sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: makeEgg)
         sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: makeNote)
+    }
+
+    /// Each district is a tinted patch of ground with its name near the top.
+    private func drawDistricts() {
+        while districtNodes.count < world.districts.count {
+            let d = world.districts[districtNodes.count]
+            let patch = SKSpriteNode(color: Ink.tint(d.index), size: .zero)
+            patch.anchorPoint = CGPoint(x: 0, y: 1)
+            patch.zPosition = -100
+            let font = UIFont.systemFont(ofSize: 28, weight: .heavy)
+            let label = SKLabelNode()
+            label.attributedText = NSAttributedString(string: d.name(world.language), attributes: [
+                .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 28),
+                .foregroundColor: Ink.ink.withAlphaComponent(0.18),
+            ])
+            label.verticalAlignmentMode = .top
+            label.zPosition = 1
+            patch.addChild(label)
+            addChild(patch)
+            districtNodes.append(patch)
+        }
+        for (k, patch) in districtNodes.enumerated() {
+            let r = world.districts[k].rect
+            patch.position = screen(Vec(r.x, r.y))
+            patch.size = CGSize(width: CGFloat(r.w) * unit, height: CGFloat(r.h) * unit)
+            patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -60)
+        }
     }
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
@@ -166,6 +273,79 @@ final class WorldScene: SKScene {
         n.addChild(mark)
         return n
     }
+}
+
+// MARK: - Gestures
+
+extension WorldScene {
+    /// Screen point (y down) → world point.
+    private func worldPoint(_ p: CGPoint) -> Vec {
+        Vec(origin.x + Double(p.x / unit), origin.y + Double(p.y / unit))
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard touch == nil, let t = touches.first, let view else { return }
+        let p = t.location(in: view)
+        let w = worldPoint(p)
+        let target = world.bichito(at: w, pad: Double(12 / unit))
+        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode)
+        finger = t
+        if let id = target, let b = world.bichito(id) { grabOffset = b.pos - w }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t), var g = touch, let view else { return }
+        let p = t.location(in: view)
+        if case let .grab(id) = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp) {
+            world.grab(id)
+            Haptics.tap()
+        }
+        touch = g
+        guard g.isDrag else { return }
+        if let id = g.target {
+            world.move(id, to: worldPoint(p) + grabOffset)
+        } else { // dragging empty ground pans the map
+            let q = t.previousLocation(in: view)
+            lens.pan(by: Vec(Double(p.x - q.x), Double(p.y - q.y)))
+            fit()
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t), let g = touch, let view else { return }
+        switch g.tapAction {
+        case let .pet(id): world.pet(id); Haptics.tap()
+        case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
+        default: break
+        }
+        if g.isDrag, let id = g.target {
+            // Throw with the finger's speed, capped so a wild flick doesn't cross the whole map.
+            var v = g.velocity(at: t.timestamp) * Double(1 / unit)
+            if v.length > 2000 { v = v.unit * 2000 }
+            world.release(id, velocity: v)
+        }
+        touch = nil
+        finger = nil
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t) else { return }
+        if let g = touch, g.isDrag, let id = g.target { world.release(id, velocity: .zero) }
+        touch = nil
+        finger = nil
+    }
+
+    /// Shaking the phone: everybody jumps.
+    func scareEveryone() {
+        world.scare(at: nil)
+        Haptics.tap()
+    }
+}
+
+@MainActor
+enum Haptics {
+    private static let light = UIImpactFeedbackGenerator(style: .light)
+    static func tap() { light.impactOccurred() }
 }
 
 /// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
@@ -258,7 +438,7 @@ final class BichitoNode: SKNode {
     }
 
     /// Every frame: advance the spring, the legs and the blink, and pick the cached texture.
-    func render(_ b: Bichito, dt: Double) {
+    func render(_ b: Bichito, dt: Double, moving: Bool = false) {
         spring.step(dt)
         let speed = b.vel.length
         legPhase = speed > 6 ? legPhase + dt * speed / 8 : 0 // a step every 8 world units
@@ -276,7 +456,7 @@ final class BichitoNode: SKNode {
             key = next
             sprite.texture = Sprites.shared.texture(next)
         }
-        let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy)
+        let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
         if text != shownBubble {
             shownBubble = text
             bubble.isHidden = text == nil

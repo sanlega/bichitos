@@ -62,6 +62,11 @@ jobs:
           sleep 6
           mkdir -p screenshots
           xcrun simctl io "$SIM" screenshot screenshots/world.png
+          # Second shot: the edge between two districts, with the "moving out" line still on screen.
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -border
+          sleep 4
+          xcrun simctl io "$SIM" screenshot screenshots/border.png
 
       - name: Screenshot of the editor
         # -screenshot-editor opens the editor sheet over the same staged world.
