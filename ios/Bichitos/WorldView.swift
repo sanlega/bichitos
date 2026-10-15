@@ -12,8 +12,11 @@ struct WorldView: View {
     @State private var peek: Int? // id of the bichito whose peek is up
     @State private var picking = false // BarrioPicker is open
     @State private var reading = false // NewsFeed is open
+    @State private var setting = false // SettingsSheet is open
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var es: Bool { scene.world.language == .es }
 
     /// VoiceOver: an element over each bichito on screen, with the gestures as actions (DESIGN.md Accesibilidad).
     /// Re-read every second, like `BichitoPeek`: the world is not observable.
@@ -28,9 +31,9 @@ struct WorldView: View {
                         .accessibilityLabel(b.label)
                         .accessibilityAddTraits(.isButton)
                         .accessibilityAction { peek = b.id }
-                        .accessibilityAction(named: "Acariciar") { scene.pet(b.id) }
-                        .accessibilityAction(named: "Lanzar") { scene.toss(b.id) }
-                        .accessibilityAction(named: "Ficha") { card = b.id }
+                        .accessibilityAction(named: es ? "Acariciar" : "Pet") { scene.pet(b.id) }
+                        .accessibilityAction(named: es ? "Lanzar" : "Throw") { scene.toss(b.id) }
+                        .accessibilityAction(named: es ? "Ficha" : "Card") { card = b.id }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,7 +51,13 @@ struct WorldView: View {
                 }
             if voiceOver { bichitoElements }
             VStack(alignment: .leading, spacing: 8) {
-                BarrioPill(scene: scene) { picking = true }
+                HStack(alignment: .top) {
+                    BarrioPill(scene: scene) { picking = true }
+                    Spacer(minLength: 8)
+                    Button { setting = true } label: { Image(systemName: "gearshape.fill") }
+                        .buttonStyle(IconButtonStyle(background: Color.card, shadow: true))
+                        .accessibilityLabel(es ? "Ajustes" : "Settings")
+                }
                 if let event = scene.toast {
                     Button { scene.onToastTap?(event) } label: {
                         Text(scene.world.toastText(event))
@@ -60,16 +69,17 @@ struct WorldView: View {
                     }
                     .buttonStyle(.plain)
                     .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
+            .animation(.ui(reduceMotion: reduceMotion), value: scene.toast)
             .sheet(isPresented: $picking) { BarrioPicker(scene: scene) { picking = false } }
             .sheet(isPresented: $reading) { NewsFeed(scene: scene) { reading = false } }
+            .sheet(isPresented: $setting) { SettingsSheet(language: scene.world.language) }
             if foodMode {
                 // Food mode marks the screen edge (DESIGN.md "Modos").
                 Rectangle().strokeBorder(Color.accent, lineWidth: 3)
@@ -80,19 +90,19 @@ struct WorldView: View {
                 Spacer()
                 // One mode at a time: in food mode the tray is the picker, and «Hecho» is the only way out.
                 if foodMode {
-                    FoodPicker(kind: $foodKind) { foodMode = false }
+                    FoodPicker(kind: $foodKind, language: scene.world.language) { foodMode = false }
                         .padding(.bottom, 16)
                 } else {
                     if let id = peek {
                         BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
                             .padding(.horizontal, 16)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
                     }
-                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true }, news: { reading = true })
+                    Tray(foodMode: $foodMode, es: es, scare: { scene.scareEveryone() }, add: { creating = true }, news: { reading = true })
                         .padding(.bottom, 16)
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: peek)
+            .animation(.ui(reduceMotion: reduceMotion), value: peek)
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
         .onChange(of: foodKind) { _, k in scene.foodKind = k }
@@ -111,6 +121,7 @@ struct WorldView: View {
                 reading = false
             }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
+            if CommandLine.arguments.contains("-screenshot-settings") { setting = true }
             if CommandLine.arguments.contains("-screenshot-barrios") { // after the staged world is populated
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true }
             }
@@ -133,6 +144,7 @@ struct WorldView: View {
 /// the principal one sits in the centre once the map button (5th) lands.
 struct Tray: View {
     @Binding var foodMode: Bool
+    let es: Bool
     var scare: () -> Void
     var add: () -> Void
     var news: () -> Void
@@ -141,17 +153,17 @@ struct Tray: View {
         HStack(spacing: 16) {
             Button { foodMode.toggle() } label: { Image(systemName: "carrot.fill") }
                 .buttonStyle(IconButtonStyle(background: foodMode ? Color.accent : Color.fill))
-                .accessibilityLabel("Modo comida")
+                .accessibilityLabel(es ? "Modo comida" : "Food mode")
                 .accessibilityAddTraits(foodMode ? .isSelected : [])
             Button(action: scare) { Image(systemName: "bolt.fill") }
                 .buttonStyle(IconButtonStyle())
-                .accessibilityLabel("Asustar")
+                .accessibilityLabel(es ? "Asustar" : "Scare")
             Button(action: add) { Image(systemName: "plus") }
                 .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
-                .accessibilityLabel("Nuevo bichito")
+                .accessibilityLabel(es ? "Nuevo bichito" : "New bichito")
             Button(action: news) { Image(systemName: "newspaper.fill") }
                 .buttonStyle(IconButtonStyle())
-                .accessibilityLabel("Noticias")
+                .accessibilityLabel(es ? "Noticias" : "News")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
@@ -171,27 +183,28 @@ extension UIWindow {
 }
 
 extension Bichito {
-    /// What VoiceOver says: name and current state, «Pocholo, durmiendo, con hambre».
-    var voiceLabel: String {
+    /// What VoiceOver says: name and current state, «Pocholo, durmiendo, con hambre» / «Pocholo, sleeping, hungry».
+    func voiceLabel(_ language: Language) -> String {
+        let es = language == .es
         let state: String
         switch mood {
-        case .wander: state = "paseando"
-        case .sleep: state = "durmiendo"
-        case .eat: state = "comiendo"
-        case .love: state = "enamorado"
-        case .fight: state = "peleando"
-        case .chase: state = "persiguiendo a alguien"
-        case .flee: state = "huyendo"
-        case .imitate: state = "imitando a alguien"
-        case .scared: state = "asustado"
-        case .happy: state = "contento"
-        case .held: state = "en tu mano"
-        case .incubating: state = "incubando"
+        case .wander: state = es ? "paseando" : "wandering"
+        case .sleep: state = es ? "durmiendo" : "sleeping"
+        case .eat: state = es ? "comiendo" : "eating"
+        case .love: state = es ? "enamorado" : "in love"
+        case .fight: state = es ? "peleando" : "fighting"
+        case .chase: state = es ? "persiguiendo a alguien" : "chasing someone"
+        case .flee: state = es ? "huyendo" : "running away"
+        case .imitate: state = es ? "imitando a alguien" : "copying someone"
+        case .scared: state = es ? "asustado" : "scared"
+        case .happy: state = es ? "contento" : "happy"
+        case .held: state = es ? "en tu mano" : "in your hand"
+        case .incubating: state = es ? "incubando" : "incubating"
         }
-        var parts = [name, dizzy > 0 ? "mareado" : state]
-        if needs.hunger < 0.3 { parts.append("con hambre") }
-        if needs.sleep < 0.3 { parts.append("con sueño") }
-        if needs.affection < 0.3 { parts.append("quiere mimos") }
+        var parts = [name, dizzy > 0 ? (es ? "mareado" : "dizzy") : state]
+        if needs.hunger < 0.3 { parts.append(es ? "con hambre" : "hungry") }
+        if needs.sleep < 0.3 { parts.append(es ? "con sueño" : "sleepy") }
+        if needs.affection < 0.3 { parts.append(es ? "quiere mimos" : "wants cuddles") }
         return parts.joined(separator: ", ")
     }
 }
