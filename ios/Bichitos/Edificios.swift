@@ -22,6 +22,9 @@ struct Building: Equatable {
     /// Its box in world units on the 8 u grid, standing on its base (the bottom edge, `y + h`): the size from the catalogue,
     /// drawn front-facing. Fences and low walls are their ground strip, 8 u deep; they are drawn up from it.
     let rect: Rect
+    /// The strip of ground it stands on, the bottom of `rect`: what never overlaps another one, nor water, rock or a path.
+    /// What is drawn above it may hide what is behind (DESIGN.md, "Perspectiva y unidades").
+    let base: Rect
     /// The part that blocks movement, made of whole terrain cells; nil when bichitos walk through it (DESIGN.md).
     let blocks: Rect?
     /// Casitas only: just in front of the door, where its owners sleep.
@@ -44,7 +47,7 @@ extension Rect {
 }
 
 extension Terrain {
-    /// Each district's buildings, then its decoration, from the district's seed. Every one gets room of its own (rects
+    /// Each district's buildings, then its decoration, from the district's seed. Every one gets room of its own (bases
     /// never overlap, a casita keeps a strip in front of its door) on plain ground: no water, rock or path, clear of the
     /// district's edges. The monument goes in the centre, where the paths end, unless water or rock is there.
     mutating func placeBuildings(seed: UInt64, rects: [Rect]) {
@@ -60,7 +63,7 @@ extension Terrain {
                     let size = Terrain.size(kind, &rng)
                     guard let r = findRoom(size, kind, in: rect, avoiding: rooms, &rng) else { continue }
                     rooms.append(Terrain.room(r, kind))
-                    add(Building(id: buildings.count, kind: kind, theme: t, rect: r, blocks: Terrain.blocks(r, kind),
+                    add(Building(id: buildings.count, kind: kind, theme: t, rect: r, base: Terrain.base(r, kind), blocks: Terrain.blocks(r, kind),
                                  door: kind == .casita ? Vec(r.x + r.w / 2, r.y + r.h + 20) : nil, seed: rng.next()))
                 }
             }
@@ -117,10 +120,24 @@ extension Terrain {
         }
     }
 
-    /// The rect plus the gap kept around it (8 u around buildings, 4 u around decoration), and a casita's doorstep.
+    /// How deep its base is: 24 u for a casita, 32 u for the monument, 16 u under a tree's crown, 8 u under a lamp;
+    /// the rest are low enough to stand on all of their rect.
+    private static func base(_ r: Rect, _ kind: Building.Kind) -> Rect {
+        let depth: Double
+        switch kind {
+        case .casita: depth = 48
+        case .monument: depth = 64
+        case .tree: depth = 32
+        case .lamp: depth = 16
+        default: depth = r.h
+        }
+        return Rect(x: r.x, y: r.y + r.h - depth, w: r.w, h: depth)
+    }
+
+    /// The base plus the gap kept around it (8 u around buildings, 4 u around decoration), and a casita's doorstep.
     private static func room(_ r: Rect, _ kind: Building.Kind) -> Rect {
-        let pad = kind.isDecoration ? 8.0 : 16.0
-        return Rect(x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: r.h + 2 * pad + (kind == .casita ? 40 : 0))
+        let b = base(r, kind), pad = kind.isDecoration ? 8.0 : 16.0
+        return Rect(x: b.x - pad, y: b.y - pad, w: b.w + 2 * pad, h: b.h + 2 * pad + (kind == .casita ? 32 : 0))
     }
 
     /// The monument tries the centre first; then random spots on the grid, and for buildings (never decoration)
@@ -136,7 +153,7 @@ extension Terrain {
         func fits(_ r: Rect) -> Bool {
             let room = Terrain.room(r, kind)
             guard room.y + room.h <= district.y + district.h, !rooms.contains(where: { $0.intersects(room) }) else { return false }
-            return cellIndices(room).allSatisfy { cells[$0].walkable && (cells[$0] != .path || kind == .monument) }
+            return plain(room, paths: kind == .monument)
         }
         if kind == .monument {
             let c = district.center
@@ -150,6 +167,22 @@ extension Terrain {
         guard !kind.isDecoration else { return nil }
         for r in r0...r1 { for c in c0...c1 where fits(at(c, r)) { return at(c, r) } }
         return nil
+    }
+
+    /// Every cell `r` overlaps is walkable ground, and no path unless `paths`. A plain loop: placement tries it thousands of times.
+    private func plain(_ r: Rect, paths: Bool) -> Bool {
+        let s = Terrain.cell
+        let c0 = max(0, Int(((r.x - origin.x) / s).rounded(.down))), r0 = max(0, Int(((r.y - origin.y) / s).rounded(.down)))
+        let c1 = min(cols - 1, Int(((r.x + r.w - origin.x) / s).rounded(.up)) - 1)
+        let r1 = min(rows - 1, Int(((r.y + r.h - origin.y) / s).rounded(.up)) - 1)
+        guard c0 <= c1, r0 <= r1 else { return true }
+        for row in r0...r1 {
+            for c in c0...c1 {
+                let cell = cells[row * cols + c]
+                if !cell.walkable || (cell == .path && !paths) { return false }
+            }
+        }
+        return true
     }
 
     /// The index of every cell `r` overlaps.
@@ -188,6 +221,12 @@ extension World {
             if n < 2 && n < (best?.n ?? 2) { best = (c.id, n) }
         }
         bichitos[i].home = best?.id
+    }
+
+    /// Someone left `district` or ran away: whoever there had no casita tries again, so `home == nil` always means no room
+    /// (and loading a save, `fitHomes`, gives nobody a new one).
+    mutating func rehome(in district: Int) {
+        for j in bichitos.indices where bichitos[j].home == nil && bichitos[j].district == district { findHome(j) }
     }
 
     /// For loaded saves: keeps every home that is still a casita of its owner's district with room,

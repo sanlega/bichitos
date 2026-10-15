@@ -644,14 +644,17 @@ struct World: Codable, Equatable {
 
     /// Its home district is now `district` (it walks there by itself), with a casita there if one has room.
     mutating func moveHome(_ i: Int, to district: Int) {
+        let old = bichitos[i].district
         bichitos[i].district = district
         findHome(i)
+        rehome(in: old)
     }
 
     /// Running away frees its casita: `occupants` only counts the bichitos still here.
     private mutating func escapeNeglected() {
         for k in bichitos.indices.reversed() where bichitos[k].isNeglected && bichitos[k].mood != .held {
             let b = bichitos.remove(at: k)
+            rehome(in: b.district)
             let seed = rng.next()
             notes.append(Note(pos: b.pos, text: Names.goodbye(name: b.name, seed: seed, language: language), bichito: b))
             record(.escaped(b.id))

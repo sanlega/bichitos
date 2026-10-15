@@ -39,13 +39,14 @@ final class EdificiosTests: XCTestCase {
                 if let m = here.first(where: { $0.kind == .monument }) { XCTAssert((192...256).contains(m.rect.w)) }
                 for (k, b) in here.enumerated() {
                     XCTAssertTrue(cells(b.rect).allSatisfy(rect.contains), "\(b.kind) outside its district, seed \(seed)")
-                    for p in cells(b.rect) {
+                    XCTAssertEqual(b.base.y + b.base.h, b.rect.y + b.rect.h)
+                    for p in cells(b.base) {
                         let ground = t.at(p)
                         XCTAssertTrue(ground.walkable, "\(b.kind) on \(ground), seed \(seed)")
                         // The monument stands where the paths end, in the centre.
                         if b.kind != .monument { XCTAssertNotEqual(ground, .path, "\(b.kind) on a path, seed \(seed)") }
                     }
-                    for o in here[(k + 1)...] { XCTAssertFalse(b.rect.intersects(o.rect), "\(b.kind) on \(o.kind), seed \(seed)") }
+                    for o in here[(k + 1)...] { XCTAssertFalse(b.base.intersects(o.base), "\(b.kind) on \(o.kind), seed \(seed)") }
                     if let bed = b.bed { XCTAssertTrue(t.walkable(bed), "\(b.kind) bed blocked, seed \(seed)") }
                     XCTAssertEqual(b.door != nil, b.kind == .casita)
                 }
@@ -64,10 +65,9 @@ final class EdificiosTests: XCTestCase {
                 XCTAssertTrue(cells(s).allSatisfy { !t.walkable($0) }, "\(b.kind)")
                 XCTAssertTrue(t.walkable(t.nearestWalkable(s.center)))
                 if b.kind == .tree { XCTAssertEqual(s.w * s.h, 16 * 16, "only the trunk") }
-                if b.kind == .casita { XCTAssertTrue(t.walkable(b.rect.center - Vec(0, b.rect.h / 2 - 8)), "behind it is walkable") }
             default:
                 XCTAssertNil(b.blocks)
-                XCTAssertTrue(cells(b.rect).allSatisfy(t.walkable), "\(b.kind) is walked through")
+                XCTAssertTrue(cells(b.base).allSatisfy(t.walkable), "\(b.kind) is walked through")
             }
         }
     }
