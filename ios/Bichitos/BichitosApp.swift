@@ -47,7 +47,7 @@ enum Terrarium {
             w.bichitos[3].enter(.love, for: 600, target: w.bichitos[2].id)
             w.bichitos[4].enter(.happy, for: 600)
             w.bichitos[5].enter(.wander, for: 600)
-            w.bichitos[5].dizzy = 30 // no steering while dizzy, and it starts still
+            w.bichitos[5].dizzy = 600 // no steering while dizzy, and it starts still; long because the CI capture can come a minute late
             w.bichitos[6].needs.hunger = 0.2
             w.bichitos[7].needs = Bichito.Needs(hunger: 0.5, sleep: 0.4, affection: 0.2)
             w.eggs.append(Egg(id: 9000, pos: at(0.3, 4), parents: [], recipe: recipes[0], hatchIn: 600))
