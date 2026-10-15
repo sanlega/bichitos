@@ -58,6 +58,17 @@ final class Sprites {
         return t
     }
 
+    private var names: [String: SKTexture] = [:]
+
+    /// A name in the pixel font. One texture serves every zoom: `.nearest` scales it by a whole number.
+    func texture(name: String) -> SKTexture {
+        if let t = names[name] { return t }
+        let t = SKTexture(cgImage: Self.image(PixelFont.grid(name), PixelFont.palette, shadow: false))
+        t.filteringMode = .nearest
+        names[name] = t
+        return t
+    }
+
     func removeAll() {
         cache.removeAll()
         images.removeAll()
