@@ -47,12 +47,13 @@ struct BarrioPicker: View {
                 ForEach(scene.world.barrioRows, id: \.district) { row in
                     let theme = District.themes[row.district]
                     Button {
+                        guard row.missing == nil else { return } // not .disabled: it would fade the row past readable
                         scene.travel(to: row.district)
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(hex: theme.tint))
+                                .fill(Color(hex: theme.tint).opacity(row.missing == nil ? 1 : 0.35))
                                 .frame(width: 44, height: 44)
                                 .overlay {
                                     if row.missing != nil {
@@ -64,6 +65,7 @@ struct BarrioPicker: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(language == .es ? theme.es : theme.en)
                                     .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(row.missing == nil ? Color.ink : Color.inkDim)
                                 Text(BarrioPicker.affinity(theme.affine, es: es))
                                     .font(.system(size: 13, weight: .medium, design: .rounded))
                                     .foregroundStyle(Color.inkDim)
@@ -85,9 +87,9 @@ struct BarrioPicker: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(row.missing != nil)
-                    .opacity(row.missing != nil ? 0.55 : 1)
                     .accessibilityAddTraits(row.district == here ? .isSelected : [])
+                    .accessibilityHint(row.missing == nil ? (es ? "Lleva la cámara allí" : "Takes the camera there")
+                                                          : (es ? "Bloqueado" : "Locked"))
                 }
             }
             .padding(.horizontal, 16)
@@ -95,7 +97,7 @@ struct BarrioPicker: View {
         }
         .foregroundStyle(Color.ink)
         .background(Color.white)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.72), .large]) // all 7 rows on a Pro Max; smaller phones scroll
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
