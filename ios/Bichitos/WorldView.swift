@@ -6,11 +6,16 @@ import UIKit
 struct WorldView: View {
     @ObservedObject var scene: WorldScene
     @State private var foodMode = false
+    @State private var creating = false
+    @State private var card: Int? // id of the bichito whose card is open
 
     var body: some View {
         ZStack {
             SpriteView(scene: scene)
                 .ignoresSafeArea()
+                .sheet(isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } })) {
+                    if let card { BichitoCard(scene: scene, id: card) }
+                }
             VStack(spacing: 8) {
                 Text(scene.title)
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
@@ -31,12 +36,26 @@ struct WorldView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
             VStack {
                 Spacer()
-                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { scene.addRandomBichito() })
+                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
                     .padding(.bottom, 8)
             }
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
+        .sheet(isPresented: $creating) {
+            CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
+                         language: scene.world.language) { recipe, name, description in
+                scene.drop(recipe, name: name, description: description)
+            }
+        }
+        .onAppear {
+            scene.onLongPress = { card = $0 }
+            if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
+            if CommandLine.arguments.contains("-screenshot-card") {
+                // After the staged world is populated: the one with friends, rivals and family.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
+            }
+        }
     }
 }
 

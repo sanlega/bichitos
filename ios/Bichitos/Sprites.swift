@@ -17,21 +17,36 @@ final class Sprites {
     static let width = Generator.canvas, height = Generator.canvas + 1
 
     private var cache: [SpriteKey: SKTexture] = [:]
+    private var images: [SpriteKey: CGImage] = [:]
     var count: Int { cache.count }
 
     func texture(_ key: SpriteKey) -> SKTexture {
         if let t = cache[key] { return t }
-        let wellbeing = Double(key.wellbeing) / Double(Look.wellbeingSteps)
-        let grid = Generator.render(key.recipe, expression: key.expression, squash: Look.squashLevels[key.squash],
-                                    legFrame: key.legFrame, wellbeing: wellbeing)
-        let palette = Palette.of(key.recipe).desaturate(1 - wellbeing)
-        let t = SKTexture(cgImage: Self.image(grid, palette))
+        let t = SKTexture(cgImage: Self.image(key))
         t.filteringMode = .nearest
         cache[key] = t
         return t
     }
 
-    func removeAll() { cache.removeAll() }
+    /// The same pixels as a `CGImage`, for SwiftUI.
+    func cgImage(_ key: SpriteKey) -> CGImage {
+        if let i = images[key] { return i }
+        let i = Self.image(key)
+        images[key] = i
+        return i
+    }
+
+    func removeAll() {
+        cache.removeAll()
+        images.removeAll()
+    }
+
+    static func image(_ key: SpriteKey) -> CGImage {
+        let wellbeing = Double(key.wellbeing) / Double(Look.wellbeingSteps)
+        let grid = Generator.render(key.recipe, expression: key.expression, squash: Look.squashLevels[key.squash],
+                                    legFrame: key.legFrame, wellbeing: wellbeing)
+        return image(grid, Palette.of(key.recipe).desaturate(1 - wellbeing))
+    }
 
     static func image(_ grid: PixelGrid, _ palette: Palette) -> CGImage {
         let w = grid.width, h = grid.height + 1

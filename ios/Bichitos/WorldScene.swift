@@ -53,6 +53,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var touch: Touch?
     private var finger: UITouch?
     private var grabOffset = Vec.zero
+    private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
 
     /// The camera starts on `focus`, or on the centre of the first district.
     init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
@@ -104,8 +105,11 @@ final class WorldScene: SKScene, ObservableObject {
 
     override func didMove(to view: SKView) {
         super.didMove(to: view)
-        guard !(view.gestureRecognizers ?? []).contains(where: { $0 is UIPinchGestureRecognizer }) else { return }
+        guard longPress == nil else { return }
         view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched)))
+        let g = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        view.addGestureRecognizer(g)
+        longPress = g
     }
 
     /// Pinch zoom in whole pixel steps, around the fingers.
@@ -118,6 +122,34 @@ final class WorldScene: SKScene, ObservableObject {
         lens.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
         fit()
         if lens.pixel != before { relayout() }
+    }
+
+    // MARK: - New bichitos
+
+    /// A bichito from the editor: it appears in the middle of the screen, falls in from above and lands with a boing.
+    func drop(_ recipe: Recipe, name: String, description: String) {
+        let id = world.add(recipe, at: world.visibleRect?.center, name: name, description: description)
+        if let i = world.index(of: id) { world.bichitos[i].enter(.happy, for: 2) }
+        dropping.insert(id)
+    }
+
+    func rename(_ id: Int, to name: String) { world.rename(id, to: name) }
+
+    // MARK: - Long press → card
+
+    /// Called with the id of the bichito under a long press.
+    var onLongPress: ((Int) -> Void)?
+    private var longPress: UILongPressGestureRecognizer?
+
+    @objc private func longPressed(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, let view else { return }
+        let p = convertPoint(fromView: g.location(in: view))
+        // The body's centre sits about 12 sprite pixels above the feet (the node's origin).
+        let hit = bichitoNodes
+            .map { (id: $0.key, d: hypot($0.value.position.x - p.x, $0.value.position.y + 12 * pixel - p.y)) }
+            .filter { $0.d < 16 * pixel }
+            .min { $0.d < $1.d }
+        if let hit { onLongPress?(hit.id) }
     }
 
     // MARK: - Frame
@@ -164,8 +196,10 @@ final class WorldScene: SKScene, ObservableObject {
                 node = n
             } else {
                 node = BichitoNode(b, pixel: pixel)
+                node.language = world.language
                 bichitoNodes[b.id] = node
                 addChild(node)
+                if dropping.remove(b.id) != nil { node.dropIn(from: size.height / 2) }
             }
             let from = previous[b.id] ?? b.pos
             let p = from + (b.pos - from) * alpha
@@ -335,16 +369,6 @@ extension WorldScene {
         world.scare(at: nil)
         Haptics.tap()
     }
-
-    /// Placeholder for the editor: a random bichito lands on screen.
-    func addRandomBichito() {
-        guard let v = world.visibleRect, world.bichitos.count < World.maxPopulation else { return }
-        var rng = SystemRandomNumberGenerator()
-        let p = Vec(v.x + .random(in: 0.2...0.8) * v.w, v.y + .random(in: 0.3...0.7) * v.h)
-        let id = world.add(Recipe.random(using: &rng), at: p)
-        if let i = world.index(of: id) { world.bichitos[i].enter(.happy, for: 1.5) }
-        Haptics.tap()
-    }
 }
 
 @MainActor
@@ -369,6 +393,17 @@ final class BichitoNode: SKNode {
     private var lastMood: Bichito.Mood
     private var key: SpriteKey?
     private var shownBubble: String?
+    var language = Language.es
+    /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
+    static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
+    private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
+    private var bubbleSize = CGSize(width: 30, height: 24)
+    private static let bubbleMaxWidth: CGFloat = 120
+    private static let bubbleFont: UIFont = {
+        let font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        return UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 13)
+    }()
+    private var shownName = ""
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
@@ -378,11 +413,7 @@ final class BichitoNode: SKNode {
         sprite.anchorPoint = CGPoint(x: 0.5, y: 1 / CGFloat(Sprites.height)) // feet on the node's origin, shadow below
         addChild(sprite)
 
-        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
-        label.attributedText = NSAttributedString(string: b.name, attributes: [
-            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
-            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
-        ])
+        show(name: b.name)
         label.verticalAlignmentMode = .top
         label.zPosition = 50
         addChild(label)
@@ -391,9 +422,9 @@ final class BichitoNode: SKNode {
         bubble.strokeColor = Ink.ink.withAlphaComponent(0.1)
         bubble.zPosition = 100
         bubble.isHidden = true
-        bubbleText.fontSize = 14
-        bubbleText.fontColor = Ink.ink // SKLabelNode defaults to white, invisible on the white bubble
         bubbleText.verticalAlignmentMode = .center
+        bubbleText.numberOfLines = 0
+        bubbleText.preferredMaxLayoutWidth = BichitoNode.bubbleMaxWidth
         bubble.addChild(bubbleText)
         addChild(bubble)
         layout(pixel: pixel)
@@ -405,8 +436,13 @@ final class BichitoNode: SKNode {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
         label.position = CGPoint(x: 0, y: -2 * pixel)
-        // Bubble: rounded box with a little tail pointing down at the head.
-        let w: CGFloat = 30, h: CGFloat = 24, tail: CGFloat = 6
+        bubble.position = CGPoint(x: 0, y: 26 * pixel)
+        shapeBubble()
+    }
+
+    /// Rounded box with a little tail pointing down at the head, sized to `bubbleSize`.
+    private func shapeBubble() {
+        let w = bubbleSize.width, h = bubbleSize.height, tail: CGFloat = 6
         let path = CGMutablePath()
         path.addRoundedRect(in: CGRect(x: -w / 2, y: tail, width: w, height: h), cornerWidth: 10, cornerHeight: 10)
         path.move(to: CGPoint(x: -5, y: tail + 0.5))
@@ -414,8 +450,31 @@ final class BichitoNode: SKNode {
         path.addLine(to: CGPoint(x: 5, y: tail + 0.5))
         path.closeSubpath()
         bubble.path = path
-        bubble.position = CGPoint(x: 0, y: 26 * pixel)
         bubbleText.position = CGPoint(x: 0, y: tail + h / 2)
+    }
+
+    private func show(name: String) {
+        shownName = name
+        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
+        label.attributedText = NSAttributedString(string: name, attributes: [
+            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
+            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
+        ])
+    }
+
+    /// Falls from `height` points above its feet, then squashes on landing and springs back.
+    func dropIn(from height: CGFloat) {
+        let fall = 0.45
+        spring.kick(3) // stretched while falling
+        sprite.position.y = height
+        sprite.run(.sequence([
+            // Whole points, so the pixels stay on the grid on the way down.
+            .customAction(withDuration: fall) { node, t in
+                let k = min(Double(t) / fall, 1)
+                node.position.y = (height * CGFloat(1 - k * k)).rounded()
+            },
+            .run { [weak self] in self?.spring.kick(-8) },
+        ]))
     }
 
     /// After every simulation tick: speeding up stretches, braking or bonks squash, a new mood gives a hop.
@@ -446,11 +505,62 @@ final class BichitoNode: SKNode {
             key = next
             sprite.texture = Sprites.shared.texture(next)
         }
+        if b.name != shownName { show(name: b.name) }
         let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
+        if var t = talk {
+            t.clock += dt
+            if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
+                let shown = t.times.dropLast().filter { $0 <= t.clock }.count
+                if shown != t.shown { showBubble(t.text, revealed: shown) }
+                t.shown = shown
+                talk = t
+                return
+            }
+            talk = nil
+            shownBubble = text
+            showBubble(text)
+        }
         if text != shownBubble {
             shownBubble = text
-            bubble.isHidden = text == nil
-            bubbleText.text = text
+            if text == nil || !startTalking(b) { showBubble(text) }
+        }
+    }
+
+    /// Voice (#14): now and then, only on screen, a phrase replaces the emoji and appears in step with the babble.
+    private func startTalking(_ b: Bichito) -> Bool {
+        guard BichitoNode.alwaysTalk || Double.random(in: 0..<1) < 0.35,
+              let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return false }
+        let line = Phrases.say(mood: b.mood, needs: b.needs, dizzy: b.dizzy, personality: recipe.personality,
+                               seed: .random(in: 0...UInt64.max), language: language)
+        let voice = recipe.voice
+        talk = (line, Babble.timeline(line, voice: voice), 0, -1)
+        Speaker.shared.say(line, voice: voice, id: b.id)
+        return true
+    }
+
+    /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
+    private func showBubble(_ text: String?, revealed: Int = .max) {
+        bubble.isHidden = text == nil
+        guard let text else { return }
+        let chars = Array(text), k = min(revealed, chars.count)
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        let s = NSMutableAttributedString(string: String(chars[..<k]), attributes: [
+            .font: BichitoNode.bubbleFont, .foregroundColor: Ink.ink, .paragraphStyle: style,
+        ])
+        s.append(NSAttributedString(string: String(chars[k...]), attributes: [
+            .font: BichitoNode.bubbleFont, .foregroundColor: UIColor.clear, .paragraphStyle: style,
+        ]))
+        bubbleText.attributedText = s
+        let box = s.boundingRect(with: CGSize(width: BichitoNode.bubbleMaxWidth, height: 200),
+                                 options: .usesLineFragmentOrigin, context: nil)
+        // SKLabelNode wraps a little differently from boundingRect: take whichever is bigger.
+        let label = bubbleText.frame.size
+        let size = CGSize(width: max(30, ceil(max(box.width, label.width)) + 16),
+                          height: max(24, ceil(max(box.height, label.height)) + 10))
+        if size != bubbleSize {
+            bubbleSize = size
+            shapeBubble()
         }
     }
 }

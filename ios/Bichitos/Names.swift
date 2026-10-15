@@ -4,11 +4,13 @@ enum Language: String, Codable, CaseIterable { case es, en }
 
 /// Generated names, absurd descriptions and goodbye notes. Deterministic from a seed.
 enum Names {
-    static func make(seed: UInt64, language: Language) -> (name: String, description: String) {
+    /// `name` replaces the generated name (the editor lets you type one) and keeps the same quirks.
+    static func make(seed: UInt64, language: Language, name custom: String? = nil) -> (name: String, description: String) {
         var rng = SeededRNG(seed: seed)
         let names = language == .es ? namesEs : namesEn
         let quirks = language == .es ? quirksEs : quirksEn
-        let name = names.randomElement(using: &rng)!
+        let picked = names.randomElement(using: &rng)!
+        let name = custom ?? picked
         let age = Int.random(in: 1...9, using: &rng)
         let i = Int.random(in: 0..<quirks.count, using: &rng)
         var j = Int.random(in: 0..<(quirks.count - 1), using: &rng)
