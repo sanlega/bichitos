@@ -472,12 +472,16 @@ struct World: Codable, Equatable {
     // MARK: - Social life
 
     private mutating func encounters() {
+        // Only the open (free and calm) can meet, and meeting never opens anyone, so the rest stay out of the grid.
+        let open = bichitos.indices.filter { bichitos[$0].mood.isFree && bichitos[$0].calm <= 0 }
+        guard open.count > 1 else { return }
         let g0 = Profile.now()
-        let grid = SpatialHash(cell: 64, points: bichitos.map { $0.pos })
+        let grid = SpatialHash(cell: 64, points: open.map { bichitos[$0].pos })
         Profile.add(10, g0)
-        for i in bichitos.indices where bichitos[i].mood.isFree && bichitos[i].calm <= 0 { // open to meeting someone
+        for i in open where bichitos[i].mood.isFree && bichitos[i].calm <= 0 {
             var met = -1
-            grid.forEach(near: bichitos[i].pos) { j in
+            grid.forEach(near: bichitos[i].pos) { k in
+                let j = open[k]
                 guard j != i, bichitos[j].mood.isFree, bichitos[j].calm <= 0 else { return false }
                 let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius + 24
                 guard (bichitos[j].pos - bichitos[i].pos).length < reach else { return false }
