@@ -75,7 +75,7 @@ struct GeneratorV1 {
         k2 = Double(5 + Int(rng.unit() * 4)); a2 = rng.unit() < 0.5 ? 1 : -1
         amp = recipe.bumps * 0.07
         // Cap the base size so the most squashed and most stretched frames still fit: squash then keeps the area.
-        h = min(h, 2 * Double(bottom - 2 - Self.traitReserve(recipe.personality)) / (1 + Self.clip + amp) / 1.3)
+        h = min(h, 2 * Double(bottom - 2 - Self.traitReserve(recipe.personality) - (recipe.eyes == .saltones ? 4 : 0)) / (1 + Self.clip + amp) / 1.3)
         w = min(w, 2 * 13.5 / (1 + amp + (recipe.body == .estrella ? 0.18 : 0)) * 0.7)
         self.squash = clamp(squash, 0.7, 1.3)
         rx = w / 2 / self.squash
@@ -151,12 +151,14 @@ struct GeneratorV1 {
         for y in 0..<Self.n {
             for x in 0..<Self.n where field(Double(x) + 0.5, Double(y) + 0.5) < 0 { region[x, y] = Self.bodyRegion }
         }
-        // Clean the silhouette: drop pixels that stick out alone, fill pinholes.
+        // Clean the silhouette: drop 1 px nubs and threads, fill pinholes.
         for _ in 0..<2 {
             for y in 0..<Self.n {
                 for x in 0..<Self.n {
                     let count = neighbours4(region, x, y).filter { $0 == Self.bodyRegion }.count
-                    if region[x, y] == Self.bodyRegion && count <= 1 { region[x, y] = 0 }
+                    let thin = (region[x - 1, y] != Self.bodyRegion && region[x + 1, y] != Self.bodyRegion)
+                        || (region[x, y - 1] != Self.bodyRegion && region[x, y + 1] != Self.bodyRegion)
+                    if region[x, y] == Self.bodyRegion && (count <= 1 || thin) { region[x, y] = 0 }
                     else if region[x, y] == 0 && count >= 3 { region[x, y] = Self.bodyRegion }
                 }
             }
@@ -230,20 +232,25 @@ struct GeneratorV1 {
         stamp(s, 16 - (s.first?.count ?? 0) / 2, y0, mirror: false)
     }
 
+    /// First drawn row in column x, so traits ride on bulging eyes instead of colliding with them.
+    private func drawnTop(_ x: Int) -> Int {
+        (0..<Self.n).first { grid[x, $0] != 0 } ?? Self.n - 1
+    }
+
     private mutating func addTraits() {
         switch recipe.personality {
         case .curiosa:
-            stampCentered(sprite([".11.", "1551", "1551", ".11.", ".11.", ".11."]), top(15) - 6)
+            stampCentered(sprite([".11.", "1551", "1551", ".11.", ".11.", ".11."]), drawnTop(15) - 6)
         case .hiperactiva:
             let x = 15 - iround(rx * 0.35)
-            stamp(sprite([".1.", "151", ".1.", ".1.", "..1", "..1"]), x - 2, top(x) - 6)
+            stamp(sprite([".1.", "151", ".1.", ".1.", "..1", "..1"]), x - 2, drawnTop(x) - 6)
         case .territorial:
             let x = 15 - iround(rx * 0.45)
-            stamp(sprite(["1..", "15.", "151"]), x - 1, top(x) - 3)
+            stamp(sprite(["1..", "15.", "151"]), x - 1, drawnTop(x) - 3)
         case .nerviosa:
-            stamp(sprite(["1", "1"]), 15, top(15) - 2)
+            stamp(sprite(["1", "1"]), 15, drawnTop(15) - 2)
             let x = 15 - max(2, iround(rx * 0.3))
-            stamp(sprite(["1.", "1.", ".1"]), x - 1, top(x) - 3)
+            stamp(sprite(["1.", "1.", ".1"]), x - 1, drawnTop(x) - 3)
         case .dormilona, .romantica:
             break  // dormilona droops in the field; romantica's cheeks go with the eyes
         }
@@ -341,7 +348,7 @@ struct GeneratorV1 {
 
     /// The left eye (or the centre one) of size w×h for the current expression.
     private func eye(_ base: EyeBase, _ w: Int, _ h: Int, center: Bool = false) -> Sprite {
-        let white = base != .dark
+        let white = base == .white
         switch expression {
         case .blink, .asleep, .happy:
             var aw = max(3, w - (white ? 2 : 0))
@@ -366,13 +373,13 @@ struct GeneratorV1 {
         case .dark:
             s = Self.dark(w, h)
         case .sleepy:
-            s = Self.socket(w, h)
-            for j in 0..<(h / 2) {
-                for i in 0..<w where s[j][i] == 6 { s[j][i] = j < h / 2 - 1 ? 3 : 1 }
-            }
-            s = Self.pupil(s, 2, 1, dy: 1)
+            // The lower half of a dark eye under a straight lid.
+            s = Self.ellipse(w, 2 * h)[h...].map { row -> [Int] in row.map { $0 ? 7 : -1 } }
+            s[0] = Array(repeating: 1, count: w)
         case .white:
-            s = center && w >= 9 ? Self.pupil(Self.socket(w, h), 4, 3) : Self.pupil(Self.socket(w, h), 2, 2)
+            let p = center && w >= 9 ? 4 : (w >= 7 ? 3 : 2)
+            s = Self.pupil(Self.socket(w, h), p, p > 2 ? 3 : 2)
+            if p > 2, let j = s.firstIndex(where: { $0.contains(7) }), let i = s[j].firstIndex(of: 7) { s[j][i] = 6 }  // glint
         }
         return expression == .angry ? Self.angry(s, center: center) : s
     }
@@ -387,7 +394,7 @@ struct GeneratorV1 {
             let sizes: [(Int, Int)]
             switch recipe.eyes {
             case .normales: sizes = [(2, 3), (3, 4), (4, 5)]
-            case .adormilados: sizes = [(4, 3), (5, 4), (6, 4)]
+            case .adormilados: sizes = [(3, 3), (4, 3), (5, 4)]
             default: sizes = [(2, 2), (2, 3), (3, 3)]
             }
             // The pixel left of the eye must still be body and the eyes must not touch.
@@ -454,8 +461,8 @@ struct GeneratorV1 {
         rasteriseBody()
         addLegs(frame: legFrame)
         outlineAndShade()
-        addTraits()
         let eyesBottom = addEyes()
+        addTraits()
         let m = mouth
         stampCentered(m, min(max(eyesBottom + 1, iround(cy + ry * 0.25)), bottom - 1 - m.count))
         removeOrphans()
