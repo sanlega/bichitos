@@ -95,6 +95,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/card.png
 
+      - name: Screenshot of a bichito's peek
+        # -screenshot-peek opens BichitoPeek (a tap on a bichito) over the tray.
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-peek
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/peek.png
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
