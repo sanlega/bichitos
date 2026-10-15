@@ -53,10 +53,12 @@ struct WorldView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
                     BarrioPill(scene: scene) { picking = true }
+                        .obstacle()
                     Spacer(minLength: 8)
                     Button { setting = true } label: { Image(systemName: "gearshape.fill") }
                         .buttonStyle(IconButtonStyle(background: Color.card, shadow: true))
                         .accessibilityLabel(es ? "Ajustes" : "Settings")
+                        .obstacle()
                 }
                 if let event = scene.toast {
                     Button { scene.onToastTap?(event) } label: {
@@ -68,6 +70,7 @@ struct WorldView: View {
                             .background(Capsule().fill(Color.card).floating())
                     }
                     .buttonStyle(.plain)
+                    .obstacle()
                     .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
                     .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .top).combined(with: .opacity))
                 }
@@ -91,19 +94,23 @@ struct WorldView: View {
                 // One mode at a time: in food mode the tray is the picker, and «Hecho» is the only way out.
                 if foodMode {
                     FoodPicker(kind: $foodKind, language: scene.world.language) { foodMode = false }
+                        .obstacle()
                         .padding(.bottom, 16)
                 } else {
                     if let id = peek {
                         BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
+                            .obstacle()
                             .padding(.horizontal, 16)
                             .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
                     }
                     Tray(foodMode: $foodMode, es: es, scare: { scene.scareEveryone() }, add: { creating = true }, news: { reading = true })
+                        .obstacle()
                         .padding(.bottom, 16)
                 }
             }
             .animation(.ui(reduceMotion: reduceMotion), value: peek)
         }
+        .onPreferenceChange(Obstacles.self) { scene.obstacles = $0 } // toast, peek, rotation, safe area
         .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
         .onChange(of: foodKind) { _, k in scene.foodKind = k }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
@@ -167,6 +174,18 @@ struct Tray: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
+    }
+}
+
+/// #79: frames of the interface floating over the map, in window points, so names and bubbles keep out from under it.
+struct Obstacles: PreferenceKey {
+    static let defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+extension View {
+    func obstacle() -> some View {
+        background(GeometryReader { g in Color.clear.preference(key: Obstacles.self, value: [g.frame(in: .global)]) })
     }
 }
 
