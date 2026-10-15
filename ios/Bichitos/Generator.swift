@@ -359,12 +359,12 @@ struct GeneratorV1 {
             if white { return Self.overlay(Self.heart(center ? w - 2 - w % 2 : w - 2), on: Self.socket(w, h), onto: [6]) }
             return Self.heart(center ? 6 : max(3, w + 1))
         case .dizzy:
-            return Self.spiral
-        case .scared:
-            return Self.pupil(Self.socket(w + 1 + (center ? 1 : 0), h + 1), center ? 2 : 1, 1)
-        case .hungry:
-            if !white { return Self.dark(w + 1, h + 1) }
-            return Self.pupil(Self.socket(w + 1 + (center ? 1 : 0), h + 1), 2, 2, dy: 1)
+            return white ? Self.spiral : Self.spiral.map { $0.map { $0 == 6 ? -1 : $0 } }
+        case .scared, .hungry:
+            if !white && expression == .hungry { return Self.dark(w + 1, h + 1) }
+            // Eyes grow by 1 px, except the cyclops eye, which is already as big as the face allows.
+            let open = center ? Self.socket(w, h) : Self.socket(w + 1, h + 1)
+            return expression == .scared ? Self.pupil(open, center ? 2 : 1, 1) : Self.pupil(open, 2, 2, dy: 1)
         case .normal, .angry:
             break
         }
@@ -373,9 +373,9 @@ struct GeneratorV1 {
         case .dark:
             s = Self.dark(w, h)
         case .sleepy:
-            // The lower half of a dark eye under a straight lid.
-            s = Self.ellipse(w, 2 * h)[h...].map { row -> [Int] in row.map { $0 ? 7 : -1 } }
-            s[0] = Array(repeating: 1, count: w)
+            // A heavy straight lid over the lower half of a smaller dark eye.
+            s = [Array(repeating: 1, count: w)]
+                + Self.ellipse(w - 2, 2 * (h - 1))[(h - 1)...].map { row -> [Int] in [-1] + row.map { $0 ? 7 : -1 } + [-1] }
         case .white:
             let p = center && w >= 9 ? 4 : (w >= 7 ? 3 : 2)
             s = Self.pupil(Self.socket(w, h), p, p > 2 ? 3 : 2)
@@ -394,7 +394,7 @@ struct GeneratorV1 {
             let sizes: [(Int, Int)]
             switch recipe.eyes {
             case .normales: sizes = [(2, 3), (3, 4), (4, 5)]
-            case .adormilados: sizes = [(3, 3), (4, 3), (5, 4)]
+            case .adormilados: sizes = [(4, 3), (5, 3), (6, 4)]
             default: sizes = [(2, 2), (2, 3), (3, 3)]
             }
             // The pixel left of the eye must still be body and the eyes must not touch.
