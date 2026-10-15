@@ -41,7 +41,8 @@ struct Tally: Equatable {
 enum WorldEvent: Codable, Equatable {
     case fought(Int, Int), fellInLove(Int, Int), eggLaid(Int, Int), hatched(Int)
     case emigrated(Int, Int) // bichito, district
-    case escaped(Int), recovered(Int), unlocked(Int)
+    case escaped(Int), recovered(Int)
+    case unlocked(Int, Recipe.Personality?) // district, and the personality it opened for (nil: just for room)
 }
 
 /// Buckets points in square cells; neighbours closer than one cell are always in the 3×3 block around a point.
@@ -69,7 +70,6 @@ struct SpatialHash {
 struct World: Codable, Equatable {
     static let hz = 20.0
     static let dt = 1 / hz
-    static let districtSize = Vec(1000, 1600)
     static let capacity = 14              // bichitos per district before the next one unlocks
     static var maxPopulation: Int { capacity * District.themes.count }
     static let lod = 10                   // off-screen bichitos move every 10 ticks (2 Hz) with a 10× step
@@ -92,7 +92,9 @@ struct World: Codable, Equatable {
     var foods: [Food] = []
     var eggs: [Egg] = []
     var notes: [Note] = []
-    var districts = [District(index: 0)]
+    var districts: [District] = []
+    /// Places the districts (Barrios.swift); nil in saves from before the ring, until `fitDistricts`.
+    var layoutSeed: UInt64?
     var events: [WorldEvent] = []
     /// Events recorded since launch (the log above is capped): the scene's cursor for live toasts.
     var eventTotal: Int { tally.n }
@@ -104,23 +106,23 @@ struct World: Codable, Equatable {
     private var pending = 0.0
 
     private enum CodingKeys: String, CodingKey {
-        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, events, newsLog, rng
+        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, layoutSeed, events, newsLog, rng
     }
 
     init(seed: UInt64, date: Date = Date(), language: Language = .es) {
         rng = SimRNG(state: seed)
+        layoutSeed = seed
         self.date = date
         self.language = language
+        unlock(0)
     }
-
-    var size: Vec { Vec(Double(districts.count) * World.districtSize.x, World.districtSize.y) }
 
     func index(of id: Int) -> Int? { bichitos.firstIndex { $0.id == id } }
     func bichito(_ id: Int) -> Bichito? { index(of: id).map { bichitos[$0] } }
 
     func clamp(_ p: Vec, _ r: Double) -> Vec {
-        let s = size
-        return Vec(min(max(p.x, r), s.x - r), min(max(p.y, r), s.y - r))
+        let s = bounds
+        return Vec(min(max(p.x, s.x + r), s.x + s.w - r), min(max(p.y, s.y + r), s.y + s.h - r))
     }
 
     // MARK: - Population
@@ -147,11 +149,12 @@ struct World: Codable, Equatable {
         return id
     }
 
-    /// Opens the next district once the population outgrows the current ones, so there is always room.
+    /// Opens a district once the population outgrows the current ones, so there is always room:
+    /// the one most of them are affine to (`nextDistrict`).
     mutating func unlockIfCrowded(extra: Int = 0) {
-        guard bichitos.count + extra > World.capacity * districts.count, districts.count < District.themes.count else { return }
-        districts.append(District(index: districts.count))
-        record(.unlocked(districts.count - 1))
+        guard bichitos.count + extra > World.capacity * districts.count, let next = nextDistrict() else { return }
+        unlock(next.theme)
+        record(.unlocked(districts.count - 1, next.reason))
     }
 
     private func home(for p: Vec?) -> Int {
@@ -366,11 +369,12 @@ struct World: Codable, Equatable {
 
     private func bounce(_ b: inout Bichito) {
         let r = b.recipe.radius
-        let s = size
-        if b.pos.x < r { b.pos.x = r; b.vel.x = abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
-        if b.pos.x > s.x - r { b.pos.x = s.x - r; b.vel.x = -abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
-        if b.pos.y < r { b.pos.y = r; b.vel.y = abs(b.vel.y) * 0.6; b.heading = -b.heading }
-        if b.pos.y > s.y - r { b.pos.y = s.y - r; b.vel.y = -abs(b.vel.y) * 0.6; b.heading = -b.heading }
+        let s = bounds
+        let x0 = s.x + r, x1 = s.x + s.w - r, y0 = s.y + r, y1 = s.y + s.h - r
+        if b.pos.x < x0 { b.pos.x = x0; b.vel.x = abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
+        if b.pos.x > x1 { b.pos.x = x1; b.vel.x = -abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
+        if b.pos.y < y0 { b.pos.y = y0; b.vel.y = abs(b.vel.y) * 0.6; b.heading = -b.heading }
+        if b.pos.y > y1 { b.pos.y = y1; b.vel.y = -abs(b.vel.y) * 0.6; b.heading = -b.heading }
     }
 
     private func isVisible(_ p: Vec) -> Bool {
@@ -610,7 +614,7 @@ struct World: Codable, Equatable {
                 line = es ? "\(name(a)) se mudó a \(place)." : "\(name(a)) moved to \(place)."
             case let .escaped(a): line = es ? "\(name(a)) se escapó y dejó una nota." : "\(name(a)) ran away and left a note."
             case let .recovered(a): line = es ? "\(name(a)) volvió a casa." : "\(name(a)) came back home."
-            case let .unlocked(d):
+            case let .unlocked(d, _):
                 let place = districts[d].name(language)
                 line = es ? "Se abrió un barrio nuevo: \(place)." : "A new district opened: \(place)."
             case .fought, .eggLaid: continue

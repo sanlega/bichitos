@@ -24,9 +24,10 @@ enum Terrarium {
 
     static func screenshot() -> WorldScene {
         WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, v in
-            // Fixed slots: 5 rows, each tall enough for bubble + sprite + name, clear of the status bar and home indicator.
+            // Fixed slots: 4 rows of bichitos, each tall enough for bubble + sprite + name, clear of the status bar,
+            // then a row for the egg and the note, above the tray.
             func at(_ fx: Double, _ row: Int) -> Vec {
-                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.925][row])
+                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.83][row])
             }
             var rng = SeededRNG(seed: 7)
             let recipes = (0..<9).map { _ in Recipe.random(using: &rng) }
@@ -37,6 +38,10 @@ enum Terrarium {
                          at(0.27, 2), at(0.73, 2), at(0.73, 3), at(0.7, 4)]
             for (r, p) in zip(recipes, slots) { w.add(r, at: p) }
             w.dropFood(at: at(0.58, 2) + Vec(0, 8))
+            // The other four foods in free gaps, so the captures show all five in pixel art.
+            for (kind, p) in [(Food.Kind.galleta, at(0.1, 1)), (.seta, at(0.5, 0)), (.croqueta, at(0.9, 1)), (.macarron, at(0.5, 3))] {
+                w.dropFood(at: p + Vec(0, 8), kind: kind)
+            }
             // Moods that don't walk, so nobody leaves its slot before the capture; long calm so encounters don't reshuffle them.
             for i in w.bichitos.indices { w.bichitos[i].calm = 600; w.bichitos[i].enter(.held, for: 0) }
             w.bichitos[1].needs.sleep = 0.1
@@ -62,16 +67,17 @@ enum Terrarium {
         }
     }
 
-    /// The edge between the first two districts, with a bichito packing up for the second one.
+    /// The mist between Plaza Mayor and its right-hand neighbour, with a bichito packing up for the neighbour.
     static func border() -> WorldScene {
         var w = World(seed: 8, date: Date(timeIntervalSince1970: 1_800_000_000))
-        w.districts.append(District(index: 1))
+        let right = w.layout.firstIndex { $0.y == 0 && $0.x > 0 } ?? 1
+        w.unlock(right)
         var rng = SeededRNG(seed: 8)
-        let edge = World.districtSize.x
-        spawn(9, in: Rect(x: edge - 140, y: 400, w: 280, h: 800), world: &w, rng: &rng)
+        let edge = World.districtSize.x + World.districtGap / 2, mid = World.districtSize.y / 2
+        spawn(9, in: Rect(x: edge - 240, y: 0, w: 480, h: World.districtSize.y), world: &w, rng: &rng)
         for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
         let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
-        return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
+        return WorldScene(world: w, focus: Vec(edge, mid)) { w, _ in
             w.bichitos[leaving].district = 1
             w.record(.emigrated(w.bichitos[leaving].id, 1)) // so the move gets its toast
         }

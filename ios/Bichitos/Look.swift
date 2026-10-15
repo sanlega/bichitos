@@ -64,6 +64,15 @@ enum Look {
     }
 }
 
+extension Look {
+    /// Where the name (its top) and the bubble (its tail) sit, in points above a sprite's origin (the bottom of its
+    /// canvas, the feet): a fixed gap under the pixel shadow and over the highest drawn row, at `pixel` points per pixel.
+    static func anchors(_ grid: PixelGrid, pixel: Double) -> (name: Double, bubble: Double) {
+        let top = (0..<grid.height).first { y in (0..<grid.width).contains { grid[$0, y] != 0 } } ?? grid.height
+        return (name: -pixel - 2, bubble: Double(grid.height - top) * pixel + 3)
+    }
+}
+
 /// Damped spring around 0 driving squash & stretch: `squash = 1 + x`.
 struct Spring: Equatable {
     var x = 0.0, v = 0.0

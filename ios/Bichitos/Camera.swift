@@ -9,6 +9,11 @@ struct Camera: Equatable {
 
         var scale: Double { [1, 3, 5, 8][rawValue] }
 
+        /// What goes over the bichitos (DESIGN.md "Zoom"): nothing on the map, the state icon from Barrio,
+        /// names and phrase bubbles too from Calle.
+        var showsIcons: Bool { self != .map }
+        var showsWords: Bool { rawValue >= Level.street.rawValue }
+
         /// Nearest level, measured by ratio: pinching is multiplicative, so ×2 is as far from ×1 as ×4 from ×2.
         static func nearest(_ scale: Double) -> Level {
             allCases.min { abs(log($0.scale / scale)) < abs(log($1.scale / scale)) }!
@@ -113,16 +118,19 @@ struct Camera: Equatable {
     }
 
     /// Keeps the view on the unlocked map; along an axis where the map is smaller than the screen, it sits centred.
-    mutating func clamp(to size: Vec, _ screen: Vec) {
+    mutating func clamp(to map: Rect, _ screen: Vec) {
         let half = screen * (0.5 / unit)
-        func fit(_ c: Double, _ h: Double, _ s: Double) -> Double { 2 * h >= s ? s / 2 : min(max(c, h), s - h) }
-        center = Vec(fit(center.x, half.x, size.x), fit(center.y, half.y, size.y))
+        func fit(_ c: Double, _ h: Double, _ lo: Double, _ s: Double) -> Double {
+            2 * h >= s ? lo + s / 2 : min(max(c, lo + h), lo + s - h)
+        }
+        center = Vec(fit(center.x, half.x, map.x, map.w), fit(center.y, half.y, map.y, map.h))
     }
 }
 
 extension World {
-    /// The district a map point belongs to (districts sit side by side, left to right).
+    /// The district a map point belongs to; in the mist between them, the one with the closest centre.
     func district(at p: Vec) -> Int {
-        min(max(Int((p.x / World.districtSize.x).rounded(.down)), 0), districts.count - 1)
+        districts.firstIndex { $0.rect.contains(p) }
+            ?? districts.indices.min { (districts[$0].rect.center - p).length < (districts[$1].rect.center - p).length } ?? 0
     }
 }

@@ -6,6 +6,7 @@ import UIKit
 struct WorldView: View {
     @ObservedObject var scene: WorldScene
     @State private var foodMode = false
+    @State private var foodKind = Food.Kind.fruta
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
     @State private var peek: Int? // id of the bichito whose peek is up
@@ -40,19 +41,32 @@ struct WorldView: View {
             .padding(.top, 8)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             .sheet(isPresented: $picking) { BarrioPicker(scene: scene) { picking = false } }
+            if foodMode {
+                // Food mode marks the screen edge (DESIGN.md "Modos").
+                Rectangle().strokeBorder(Color.accent, lineWidth: 3)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
             VStack(spacing: 8) {
                 Spacer()
-                if let id = peek {
-                    BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
-                        .padding(.horizontal, 16)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                // One mode at a time: in food mode the tray is the picker, and «Hecho» is the only way out.
+                if foodMode {
+                    FoodPicker(kind: $foodKind) { foodMode = false }
+                        .padding(.bottom, 16)
+                } else {
+                    if let id = peek {
+                        BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
+                            .padding(.horizontal, 16)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
+                        .padding(.bottom, 16)
                 }
-                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
-                    .padding(.bottom, 16)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: peek)
         }
-        .onChange(of: foodMode) { _, on in scene.foodMode = on }
+        .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
+        .onChange(of: foodKind) { _, k in scene.foodKind = k }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
         .sheet(isPresented: $creating) {
             CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
@@ -67,6 +81,7 @@ struct WorldView: View {
             if CommandLine.arguments.contains("-screenshot-barrios") { // after the staged world is populated
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true }
             }
+            if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
             if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { peek = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
             }
