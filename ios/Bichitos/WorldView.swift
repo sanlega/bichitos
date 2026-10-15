@@ -6,6 +6,7 @@ import UIKit
 struct WorldView: View {
     @ObservedObject var scene: WorldScene
     @State private var foodMode = false
+    @State private var foodKind = Food.Kind.fruta
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
 
@@ -34,13 +35,26 @@ struct WorldView: View {
             .padding(.top, 8)
             .allowsHitTesting(false)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            if foodMode {
+                // Food mode marks the screen edge (DESIGN.md "Modos").
+                Rectangle().strokeBorder(Color.brand, lineWidth: 3)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
             VStack {
                 Spacer()
-                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
-                    .padding(.bottom, 8)
+                // One mode at a time: in food mode the tray is the picker, and «Hecho» is the only way out.
+                if foodMode {
+                    FoodPicker(kind: $foodKind) { foodMode = false }
+                        .padding(.bottom, 8)
+                } else {
+                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
+                        .padding(.bottom, 8)
+                }
             }
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on }
+        .onChange(of: foodKind) { _, k in scene.foodKind = k }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
         .sheet(isPresented: $creating) {
             CreatorSheet(seed: CommandLine.arguments.contains("-screenshot") ? 11 : .random(in: 1...UInt64.max),
@@ -51,6 +65,7 @@ struct WorldView: View {
         .onAppear {
             scene.onLongPress = { card = $0 }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
+            if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
             if CommandLine.arguments.contains("-screenshot-card") {
                 // After the staged world is populated: the one with friends, rivals and family.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }

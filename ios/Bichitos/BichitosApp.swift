@@ -36,6 +36,10 @@ enum Terrarium {
                          at(0.27, 2), at(0.73, 2), at(0.73, 3), at(0.7, 4)]
             for (r, p) in zip(recipes, slots) { w.add(r, at: p) }
             w.dropFood(at: at(0.58, 2) + Vec(0, 8))
+            // The other four foods in free gaps, so the captures show all five in pixel art.
+            for (kind, p) in [(Food.Kind.galleta, at(0.1, 1)), (.seta, at(0.5, 0)), (.croqueta, at(0.9, 1)), (.macarron, at(0.5, 3))] {
+                w.dropFood(at: p + Vec(0, 8), kind: kind)
+            }
             // Moods that don't walk, so nobody leaves its slot before the capture; long calm so encounters don't reshuffle them.
             for i in w.bichitos.indices { w.bichitos[i].calm = 600; w.bichitos[i].enter(.held, for: 0) }
             w.bichitos[1].needs.sleep = 0.1

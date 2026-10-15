@@ -87,6 +87,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/editor.png
 
+      - name: Screenshot of food mode
+        # -screenshot-food turns food mode on: FoodPicker, accent edge and hint over the staged world.
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-food
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/food.png
+
       - name: Screenshot of a bichito's card
         # -screenshot-card opens the card of a staged bichito with friends, rivals and family.
         run: |

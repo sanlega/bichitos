@@ -36,6 +36,16 @@ final class Sprites {
         return i
     }
 
+    private var foods: [Food.Kind: SKTexture] = [:]
+
+    func texture(_ kind: Food.Kind) -> SKTexture {
+        if let t = foods[kind] { return t }
+        let t = SKTexture(cgImage: Self.image(kind.grid, kind.palette))
+        t.filteringMode = .nearest
+        foods[kind] = t
+        return t
+    }
+
     func removeAll() {
         cache.removeAll()
         images.removeAll()
