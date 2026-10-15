@@ -55,6 +55,7 @@ struct Follow: Equatable {
     private(set) var id: Int?
 
     mutating func start(_ id: Int) { self.id = id }
+    mutating func stop() { id = nil }
 
     /// Panning hands the camera back to the user; grabbing or tapping doesn't.
     mutating func after(_ action: Touch.Action) { if action == .pan { id = nil } }
