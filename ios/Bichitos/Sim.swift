@@ -162,6 +162,7 @@ struct World: Codable, Equatable {
         let b = Bichito(id: id, recipe: recipe, name: name ?? generated.name, description: description ?? generated.description,
                         born: date, parents: parents, pos: p, heading: heading, district: d)
         bichitos.append(b)
+        findHome(bichitos.count - 1)
         return id
     }
 
@@ -365,6 +366,15 @@ struct World: Codable, Equatable {
             } else {
                 b.timer = 0
             }
+        case .toBed:
+            let spot = b.target.flatMap { ground.buildings.indices.contains($0) ? ground.buildings[$0].bed : nil } ?? b.pos
+            let d = spot - b.pos
+            if d.length < 8 + r.speed * 0.8 * h {
+                b.vel = .zero
+                b.enter(.sleep, for: roll(60...240))
+            } else {
+                dir = d.unit; pace = 0.8
+            }
         case .sleep, .happy, .held:
             break
         }
@@ -382,19 +392,28 @@ struct World: Codable, Equatable {
         b.pos = b.pos + b.vel * h
         bounce(&b, walls)
         if !ground.walkable(b.pos) { shore(&b, from, ground) }
-        if b.timer <= 0 { decide(&b) }
+        if b.timer <= 0 { decide(&b, ground) }
         bichitos[i] = b
     }
 
-    private mutating func decide(_ b: inout Bichito) {
+    private mutating func decide(_ b: inout Bichito, _ ground: Terrain) {
+        if b.mood == .toBed { b.enter(.sleep, for: roll(60...240)); return } // never got there: sleeps where it is
         if b.needs.sleep < 0.3 || roll() < 0.04 * b.recipe.sleepiness {
-            b.enter(.sleep, for: roll(60...240))
+            if let bed = bed(for: b, ground) { b.enter(.toBed, for: 90, target: bed) } else { b.enter(.sleep, for: roll(60...240)) }
         } else if b.needs.hunger < 0.6, let f = foods.min(by: { ($0.pos - b.pos).length < ($1.pos - b.pos).length }) {
             b.enter(.eat, for: 30, target: f.id)
         } else {
             b.enter(.wander, for: roll(3...8))
             b.heading = roll(0...(2 * Double.pi))
         }
+    }
+
+    /// Its casita, or else the tree of its district nearest to it; nil when its district has neither.
+    private func bed(for b: Bichito, _ ground: Terrain) -> Int? {
+        if let h = b.home { return h }
+        let theme = districts[b.district].index
+        return ground.buildings.filter { $0.kind == .tree && $0.theme == theme }
+            .min { ($0.rect.center - b.pos).length < ($1.rect.center - b.pos).length }?.id
     }
 
     private mutating func eat(_ food: Food, _ b: inout Bichito) {
@@ -618,11 +637,18 @@ struct World: Codable, Equatable {
             let open = districts.indices.filter { $0 == b.district || count[$0] < World.capacity }
             guard let best = open.max(by: { value($0) < value($1) }),
                   best != b.district, value(best) > value(b.district) + 0.25 else { continue }
-            bichitos[i].district = best
+            moveHome(i, to: best)
             record(.emigrated(b.id, best))
         }
     }
 
+    /// Its home district is now `district` (it walks there by itself), with a casita there if one has room.
+    mutating func moveHome(_ i: Int, to district: Int) {
+        bichitos[i].district = district
+        findHome(i)
+    }
+
+    /// Running away frees its casita: `occupants` only counts the bichitos still here.
     private mutating func escapeNeglected() {
         for k in bichitos.indices.reversed() where bichitos[k].isNeglected && bichitos[k].mood != .held {
             let b = bichitos.remove(at: k)
@@ -637,6 +663,7 @@ struct World: Codable, Equatable {
         b.needs = Bichito.Needs(hunger: 0.3, sleep: 1, affection: 0.5)
         b.enter(.wander, for: 1)
         bichitos.append(b)
+        findHome(bichitos.count - 1) // its casita may have been taken meanwhile
         record(.recovered(b.id))
     }
 

@@ -20,6 +20,10 @@ struct Terrain {
     let cells: [Cell]
     /// Straight from Plaza Mayor's fountain to each themed district's centre, crossing its entrance and the mist between.
     let paths: [[Vec]]
+    /// Every district's buildings and decoration (Edificios.swift); a building's `id` is its index here.
+    var buildings: [Building] = []
+    /// Per cell, like `cells`: under the blocking part of a building, so not walkable whatever the ground.
+    var blocked: [Bool] = []
 
     /// What is under `p`; mist outside the ring. O(1) and allocation-free: it runs for every body on every tick.
     func at(_ p: Vec) -> Cell {
@@ -28,7 +32,12 @@ struct Terrain {
         return cells[Int(fy) * cols + Int(fx)]
     }
 
-    func walkable(_ p: Vec) -> Bool { at(p).walkable }
+    func walkable(_ p: Vec) -> Bool {
+        let fx = (p.x - origin.x) / Terrain.cell, fy = (p.y - origin.y) / Terrain.cell
+        guard fx >= 0, fy >= 0, fx < Double(cols), fy < Double(rows) else { return true } // mist
+        let k = Int(fy) * cols + Int(fx)
+        return cells[k].walkable && !blocked[k]
+    }
 
     /// `p` itself when walkable, else the centre of the closest walkable cell, searched in square rings outwards.
     func nearestWalkable(_ p: Vec) -> Vec {
@@ -39,7 +48,7 @@ struct Terrain {
             for dr in -k...k {
                 for dc in -k...k where abs(dr) == k || abs(dc) == k {
                     let c = c0 + dc, r = r0 + dr
-                    guard c >= 0, r >= 0, c < cols, r < rows, cells[r * cols + c].walkable else { continue }
+                    guard c >= 0, r >= 0, c < cols, r < rows, cells[r * cols + c].walkable, !blocked[r * cols + c] else { continue }
                     let q = Vec(origin.x + (Double(c) + 0.5) * Terrain.cell, origin.y + (Double(r) + 0.5) * Terrain.cell)
                     let d = (q - p).length
                     if d < bestD { bestD = d; best = q }
@@ -51,7 +60,7 @@ struct Terrain {
     }
 
     /// Each district's blobs come from smooth noise seeded by the district, biased by its dominant terrain;
-    /// then the star of paths is laid over everything.
+    /// then the star of paths is laid over everything, and last the buildings on what is left.
     init(seed: UInt64) {
         let rects = World.layout(seed: seed), size = Terrain.cell
         let x0 = rects.map(\.x).min()!, y0 = rects.map(\.y).min()!
@@ -104,6 +113,7 @@ struct Terrain {
             }
         }
         self.cells = cells
+        placeBuildings(seed: seed, rects: rects)
     }
 
     /// A district's dominant terrain as ground, the patches mixed into it, and its obstacle (nil: none at all).

@@ -7,7 +7,7 @@ enum Phrases {
     static func situation(mood: Bichito.Mood, needs: Bichito.Needs, dizzy: Double) -> Situation {
         if dizzy > 0.5 { return .thrown }
         switch mood {
-        case .sleep: return .sleepy
+        case .sleep, .toBed: return .sleepy
         case .love: return .love
         case .fight: return .fight
         case .scared, .flee: return .scared

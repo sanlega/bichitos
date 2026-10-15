@@ -182,7 +182,7 @@ final class SimTests: XCTestCase {
 
     /// FNV-1a over everything the simulation moves, Doubles by bit pattern, so any change in behaviour shows.
     /// Names and note texts are left out: they never feed back into the simulation.
-    /// Recorded before the #65 optimisation, re-recorded with the terrain (#33); re-record it only when the simulation changes on purpose.
+    /// Recorded before the #65 optimisation, re-recorded with the terrain (#33) and with the buildings and bedtime (#34); re-record it only when the simulation changes on purpose.
     private func stateHash(_ w: World) -> String {
         var h: UInt64 = 0xcbf2_9ce4_8422_2325
         func mix(_ v: UInt64) { for k in 0..<8 { h = (h ^ ((v >> UInt64(8 * k)) & 0xff)) &* 0x0000_0100_0000_01b3 } }
@@ -196,7 +196,7 @@ final class SimTests: XCTestCase {
             i(b.id); v(b.pos); v(b.vel); d(b.heading); s(b.mood.rawValue); d(b.timer); i(b.target ?? -1)
             v(b.threat ?? Vec(-1, -1)); d(b.needs.hunger); d(b.needs.sleep); d(b.needs.affection)
             for k in b.affinity.keys.sorted() { i(k); d(b.affinity[k]!) }
-            i(b.district); d(b.dizzy); d(b.calm); d(b.breedCooldown); for p in b.parents { i(p) }
+            i(b.district); i(b.home ?? -1); d(b.dizzy); d(b.calm); d(b.breedCooldown); for p in b.parents { i(p) }
         }
         for f in w.foods { i(f.id); v(f.pos); s(f.kind.rawValue) }
         for e in w.eggs { i(e.id); v(e.pos); d(e.hatchIn); mix(e.recipe.seed); for p in e.parents { i(p) } }
