@@ -182,8 +182,7 @@ final class SimTests: XCTestCase {
         var w = world(seed: 21, count: 40)
         Profile.reset()
         w.catchUp(seconds: 2 * 3600)
-        print("PROFILE 2h x 40 bichitos:
-" + Profile.report)
+        print("PROFILE 2h x 40 bichitos:\n" + Profile.report)
     }
 
     /// FNV-1a over everything the simulation moves, Doubles by bit pattern, so any change in behaviour shows.
