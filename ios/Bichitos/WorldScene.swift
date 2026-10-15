@@ -352,7 +352,8 @@ final class WorldScene: SKScene, ObservableObject {
             blob.strokeColor = .clear
             blob.zPosition = 1
             mapLayer.addChild(blob)
-            label(d.name(world.language), size: 13, alpha: 0.7, at: CGPoint(x: r.midX, y: r.maxY - 6))
+            // Just above the blob, in the mist between districts, so the dots never cover it.
+            label(d.name(world.language), size: 11, alpha: 0.7, at: CGPoint(x: r.midX, y: r.maxY + 16))
         }
         for l in locked {
             let r = box(l.rect)
@@ -368,7 +369,7 @@ final class WorldScene: SKScene, ObservableObject {
             mapLayer.addChild(lock)
             if let n = l.missing {
                 label(es ? "\(n == 1 ? "falta" : "faltan") \(n) \(n == 1 ? "bichito" : "bichitos")" : "\(n) more \(n == 1 ? "bichito" : "bichitos")",
-                      size: 11, alpha: 0.55, at: CGPoint(x: r.midX, y: r.midY - 4))
+                      size: 10, alpha: 0.55, at: CGPoint(x: r.midX, y: r.midY - 4))
             }
         }
     }

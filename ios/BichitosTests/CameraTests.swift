@@ -24,7 +24,7 @@ final class CameraTests: XCTestCase {
         c.zoom(to: 20, around: focus, screen)
         XCTAssertEqual(c.scale, 8)
         c.zoom(to: 0.1, around: focus, screen)
-        XCTAssertEqual(c.scale, 0.25)
+        XCTAssertEqual(c.scale, 0.28)
     }
 
     func testSpritesUseTheNearestWholePixel() {
@@ -35,8 +35,8 @@ final class CameraTests: XCTestCase {
     }
 
     func testNearestLevel() {
-        XCTAssertEqual(Camera.Level.allCases.map(\.scale), [0.25, 3, 5, 8])
-        XCTAssertEqual(Camera.Level.nearest(0.25), .map)
+        XCTAssertEqual(Camera.Level.allCases.map(\.scale), [0.28, 3, 5, 8])
+        XCTAssertEqual(Camera.Level.nearest(0.28), .map)
         XCTAssertEqual(Camera.Level.nearest(0.8), .map)
         XCTAssertEqual(Camera.Level.nearest(1), .district) // nearer by ratio, though 1.6 is halfway
         XCTAssertEqual(Camera.Level.nearest(3.8), .district)
