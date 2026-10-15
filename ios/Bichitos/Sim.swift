@@ -88,12 +88,12 @@ struct SpatialHash {
 
 /// TEMPORARY (#65): where `tick()` spends its time, in ns per phase.
 enum Profile {
-    static let names = ["move loop", "  update()", "collide", "encounters", "emigrate", "escapeNeglected", "hatchEggs", "tick total", "record (events+news)"]
-    static var ns = Array(repeating: 0, count: 9)
-    static var hits = Array(repeating: 0, count: 9)
+    static let names = ["move loop", "  update()", "collide", "encounters", "emigrate", "escapeNeglected", "hatchEggs", "tick total", "record (events+news)", "  meet()", "  grid build"]
+    static var ns = Array(repeating: 0, count: 11)
+    static var hits = Array(repeating: 0, count: 11)
     static func now() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
     static func add(_ k: Int, _ since: UInt64) { ns[k] += Int(now() - since); hits[k] += 1 }
-    static func reset() { ns = Array(repeating: 0, count: 9); hits = ns }
+    static func reset() { ns = Array(repeating: 0, count: 11); hits = ns }
     static var report: String {
         names.indices.map { "\(names[$0]): " + String(format: "%.3f s (%ld)", Double(ns[$0]) / 1e9, hits[$0]) }.joined(separator: "\n")
     }
@@ -474,7 +474,9 @@ struct World: Codable, Equatable {
     // MARK: - Social life
 
     private mutating func encounters() {
+        let g0 = Profile.now()
         let grid = SpatialHash(cell: 64, points: bichitos.map { $0.pos })
+        Profile.add(10, g0)
         for i in bichitos.indices where bichitos[i].mood.isFree && bichitos[i].calm <= 0 { // open to meeting someone
             var met = -1
             grid.forEach(near: bichitos[i].pos) { j in
@@ -484,7 +486,7 @@ struct World: Codable, Equatable {
                 met = j
                 return true
             }
-            if met >= 0 { meet(i, met) }
+            if met >= 0 { let m0 = Profile.now(); meet(i, met); Profile.add(9, m0) }
         }
     }
 
