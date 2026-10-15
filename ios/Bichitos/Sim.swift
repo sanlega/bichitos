@@ -98,13 +98,14 @@ struct World: Codable, Equatable {
     var notes: [Note] = []
     var districts = [District(index: 0)]
     var events: [WorldEvent] = []
+    var newsLog: News? = nil // read it through `news` (Noticias.swift); optional so saves from before it still load
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
     var visibleRect: Rect? = nil
     private var pending = 0.0
 
     private enum CodingKeys: String, CodingKey {
-        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, events, rng
+        case language, date, tickCount, nextId, bichitos, foods, eggs, notes, districts, events, newsLog, rng
     }
 
     init(seed: UInt64, date: Date = Date(), language: Language = .es) {
@@ -572,6 +573,7 @@ struct World: Codable, Equatable {
 
     private mutating func record(_ e: WorldEvent) {
         events.append(e)
+        report(e)
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
     }
 
