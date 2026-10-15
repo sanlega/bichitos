@@ -3,13 +3,12 @@ import SwiftUI
 
 @main
 struct BichitosApp: App {
-    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same.
-    @State private var scene = CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
-
     var body: some Scene {
         WindowGroup {
-            SpriteView(scene: scene)
-                .ignoresSafeArea()
+            PenView { scene in
+                SpriteView(scene: scene)
+                    .ignoresSafeArea()
+            }
         }
     }
 }
@@ -46,6 +45,14 @@ enum Terrarium {
             w.notes.append(Note(pos: Vec(center.x + 100, visible.y + visible.h - 150),
                                 text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
         }
+    }
+
+    /// `-screenshot-away` (CI): a fixed world to fast-forward 3 h, so the "mientras no estabas" sheet has news.
+    static func away() -> World {
+        var w = World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))
+        var rng = SeededRNG(seed: 7)
+        spawn(9, in: w.districts[0].rect, world: &w, rng: &rng)
+        return w
     }
 
     /// Spreads bichitos over a jittered grid inside the visible rect, clear of the status bar and the bottom edge.
