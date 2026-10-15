@@ -40,15 +40,17 @@ extension World {
         districts = Array(districts.prefix(n))
         var counts = Array(repeating: 0, count: n)
         for b in bichitos where b.district < n { counts[b.district] += 1 }
-        func rehome(_ b: inout Bichito) {
+        func rehomed(_ b: Bichito) -> Bichito {
+            var b = b
             if b.district >= n, let d = counts.indices.min(by: { counts[$0] < counts[$1] }) {
                 b.district = d
                 counts[d] += 1
             }
             b.pos = clamp(b.pos, b.recipe.radius) // it walks home from the new edge of the map
+            return b
         }
-        for i in bichitos.indices { rehome(&bichitos[i]) }
-        for i in notes.indices { rehome(&notes[i].bichito); notes[i].pos = clamp(notes[i].pos, 4) }
+        for i in bichitos.indices { bichitos[i] = rehomed(bichitos[i]) }
+        for i in notes.indices { notes[i].bichito = rehomed(notes[i].bichito); notes[i].pos = clamp(notes[i].pos, 4) }
         for i in foods.indices { foods[i].pos = clamp(foods[i].pos, 4) }
         for i in eggs.indices { eggs[i].pos = clamp(eggs[i].pos, 8) }
         events.removeAll {
