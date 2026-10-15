@@ -16,8 +16,10 @@ struct LabelLayout {
     /// past what it touches or one or two rows lower; one with no clear spot near its bichito becomes `.null` (hidden).
     /// Then `bubbles`, most important first: one that would touch a name or a bubble already kept waits (`shown` false).
     /// Names go first because they stay, while a phrase can wait a moment.
-    mutating func place(names: inout [CGRect], bubbles: [CGRect], shown: inout [Bool]) {
+    /// `obstacles` (#79) are the interface floating over the map: nothing is placed touching them.
+    mutating func place(names: inout [CGRect], bubbles: [CGRect], shown: inout [Bool], obstacles: [CGRect] = []) {
         kept.removeAll(keepingCapacity: true)
+        kept.append(contentsOf: obstacles)
         shown.removeAll(keepingCapacity: true)
         for i in names.indices {
             names[i] = spot(for: names[i])
