@@ -36,7 +36,8 @@ enum Look {
     }
 
     /// The emoji above its head, or nil when there is nothing worth saying.
-    static func bubble(mood: Bichito.Mood, needs: Bichito.Needs, dizzy: Double) -> String? {
+    /// `moving`: it is walking to a new home district (emigrating).
+    static func bubble(mood: Bichito.Mood, needs: Bichito.Needs, dizzy: Double, moving: Bool = false) -> String? {
         if dizzy > 0.5 { return "💫" }
         switch mood {
         case .sleep: return "💤"
@@ -47,7 +48,7 @@ enum Look {
         case .eat: return "🍎"
         case .incubating: return "🥚"
         case .happy: return "♪"
-        default: return needs.hunger < 0.3 ? "🍎" : nil
+        default: return moving && mood == .wander ? "🧳" : needs.hunger < 0.3 ? "🍎" : nil
         }
     }
 }

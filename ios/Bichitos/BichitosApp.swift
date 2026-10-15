@@ -2,8 +2,10 @@ import SwiftUI
 
 @main
 struct BichitosApp: App {
-    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same.
-    @State private var scene = CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
+    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same;
+    // `-border` stages the edge between two districts instead.
+    @State private var scene = CommandLine.arguments.contains("-border") ? Terrarium.border()
+        : CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
 
     var body: some Scene {
         WindowGroup {
@@ -43,6 +45,20 @@ enum Terrarium {
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: Vec(center.x + 100, visible.y + visible.h - 150),
                                 text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
+        }
+    }
+
+    /// The edge between the first two districts, with a bichito packing up for the second one.
+    static func border() -> WorldScene {
+        var w = World(seed: 8, date: Date(timeIntervalSince1970: 1_800_000_000))
+        w.districts.append(District(index: 1))
+        var rng = SeededRNG(seed: 8)
+        let edge = World.districtSize.x
+        spawn(9, in: Rect(x: edge - 140, y: 400, w: 280, h: 800), world: &w, rng: &rng)
+        for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
+        let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
+        return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
+            w.bichitos[leaving].district = 1 // after the scene noted its old home, so the move is announced
         }
     }
 

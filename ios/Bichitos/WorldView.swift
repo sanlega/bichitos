@@ -4,15 +4,36 @@ import UIKit
 
 /// The map full screen, with the tray in the thumb zone.
 struct WorldView: View {
-    let scene: WorldScene
+    @ObservedObject var scene: WorldScene
     @State private var foodMode = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             SpriteView(scene: scene)
                 .ignoresSafeArea()
-            Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { scene.addRandomBichito() })
-                .padding(.bottom, 8)
+            VStack(spacing: 8) {
+                Text(scene.title)
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color(Ink.ink))
+                if let news = scene.news {
+                    Text(news)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color(Ink.ink))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(.white).shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                Spacer()
+            }
+            .padding(.top, 8)
+            .allowsHitTesting(false)
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            VStack {
+                Spacer()
+                Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { scene.addRandomBichito() })
+                    .padding(.bottom, 8)
+            }
         }
         .onChange(of: foodMode) { _, on in scene.foodMode = on }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
