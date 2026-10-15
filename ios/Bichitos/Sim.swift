@@ -27,16 +27,6 @@ struct SimRNG: RandomNumberGenerator, Codable, Equatable {
     }
 }
 
-/// Districts sit side by side, left to right, in unlock order.
-struct District: Codable, Equatable {
-    static let namesEs = ["Villa Charco", "Monte Miga", "Barrio Pelusa", "Las Tostadas", "Rincón Grumo", "Valle Calcetín", "Puerto Fideo", "Colina Bostezo"]
-    static let namesEn = ["Puddle Town", "Crumb Hill", "Fluffville", "Toast Corner", "Lumpy Nook", "Sock Valley", "Noodle Harbor", "Yawn Hill"]
-
-    var index: Int
-    var rect: Rect { Rect(x: Double(index) * World.districtSize.x, y: 0, w: World.districtSize.x, h: World.districtSize.y) }
-    func name(_ language: Language) -> String { (language == .es ? District.namesEs : District.namesEn)[index] }
-}
-
 struct Food: Codable, Equatable { let id: Int; var pos: Vec; var kind = Kind.fruta } // kinds and favourites: Comida.swift
 struct Egg: Codable, Equatable { let id: Int; var pos: Vec; var parents: [Int]; var recipe: Recipe; var hatchIn: Double }
 /// What an escaped bichito leaves behind. It keeps the bichito so food at the note can bring it back.
@@ -74,8 +64,8 @@ struct World: Codable, Equatable {
     static let hz = 20.0
     static let dt = 1 / hz
     static let districtSize = Vec(1000, 1600)
-    static let capacity = 12              // bichitos per district before the next one unlocks
-    static var maxPopulation: Int { capacity * District.namesEs.count }
+    static let capacity = 14              // bichitos per district before the next one unlocks
+    static var maxPopulation: Int { capacity * District.themes.count }
     static let lod = 10                   // off-screen bichitos move every 10 ticks (2 Hz) with a 10× step
     static let encounterEvery = 20        // ticks between encounter checks; doubled when nobody watches
     static let hungerSpan = 36 * 3600.0   // seconds from full to starving
@@ -150,7 +140,7 @@ struct World: Codable, Equatable {
 
     /// Opens the next district once the population outgrows the current ones, so there is always room.
     mutating func unlockIfCrowded(extra: Int = 0) {
-        guard bichitos.count + extra > World.capacity * districts.count, districts.count < District.namesEs.count else { return }
+        guard bichitos.count + extra > World.capacity * districts.count, districts.count < District.themes.count else { return }
         districts.append(District(index: districts.count))
         record(.unlocked(districts.count - 1))
     }

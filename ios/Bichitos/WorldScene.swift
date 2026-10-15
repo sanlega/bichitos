@@ -6,10 +6,9 @@ enum Ink {
     static let ink = UIColor(red: 0x2B / 255, green: 0x2A / 255, blue: 0x33 / 255, alpha: 1)
     static let accent = UIColor(red: 1, green: 0x6B / 255, blue: 0x4A / 255, alpha: 1)
 
-    /// District tint: its own hue mixed 8% over mist, so districts tell apart without competing with the bichitos.
+    /// District tint: its theme colour mixed 8% over mist, so districts tell apart without competing with the bichitos.
     static func tint(_ district: Int) -> UIColor {
-        let hues: [UInt32] = [0x5AA9E6, 0xE6B85A, 0xA98BE6, 0xE68A5A, 0x5AE6A9, 0xE65AA9, 0x5AD0E6, 0x9BC25A]
-        let h = hues[district % hues.count]
+        let h = District.themes[district % District.themes.count].tint
         func mix(_ shift: UInt32, _ base: CGFloat) -> CGFloat { base * 0.92 + CGFloat((h >> shift) & 0xFF) / 255 * 0.08 }
         return UIColor(red: mix(16, 0xF3 / 255), green: mix(8, 0xF1 / 255), blue: mix(0, 0xEC / 255), alpha: 1)
     }
