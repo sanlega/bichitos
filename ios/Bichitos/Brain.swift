@@ -32,6 +32,7 @@ struct Bichito: Codable, Equatable, Identifiable {
     var dizzy = 0.0           // seconds tumbling after a throw or a bonk: momentum only, no steering
     var calm = 0.0            // seconds until it can have another encounter
     var breedCooldown = 0.0
+    var bench: Int?           // in love: the banco (`Building.id`) the pair goes to sit on; any other mood clears it
 
     var isNeglected: Bool { needs.hunger <= 0.02 && needs.affection <= 0.1 }
 
@@ -40,6 +41,7 @@ struct Bichito: Codable, Equatable, Identifiable {
         timer = time
         self.target = target
         self.threat = threat
+        bench = nil
     }
 }
 

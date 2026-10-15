@@ -120,7 +120,7 @@ final class SimTests: XCTestCase {
             let b = w.add(recipe(.romantica, seed: seed + 50), at: Vec(320, 300))
             w.bichitos[0].affinity[b] = 0.9
             w.bichitos[1].affinity[a] = 0.9
-            for _ in 0..<5000 { w.tick() }
+            for _ in 0..<8000 { w.tick() } // a walk to the banco and a date there come first (#35)
             for case let .hatched(c) in w.events {
                 guard let child = w.bichito(c) else { continue }
                 hatched = true
