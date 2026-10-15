@@ -46,6 +46,18 @@ final class Sprites {
         return t
     }
 
+    private var icons: [Palette: SKTexture] = [:]
+
+    /// A state icon (no shadow: it floats over the head), keyed by its palette, whose name says which icon it is.
+    func texture(_ icon: Look.Icon, accent: RGBA) -> SKTexture {
+        let palette = icon.palette(accent: accent)
+        if let t = icons[palette] { return t }
+        let t = SKTexture(cgImage: Self.image(icon.grid, palette, shadow: false))
+        t.filteringMode = .nearest
+        icons[palette] = t
+        return t
+    }
+
     func removeAll() {
         cache.removeAll()
         images.removeAll()
@@ -58,8 +70,8 @@ final class Sprites {
         return image(grid, Palette.of(key.recipe).desaturate(1 - wellbeing))
     }
 
-    static func image(_ grid: PixelGrid, _ palette: Palette) -> CGImage {
-        let w = grid.width, h = grid.height + 1
+    static func image(_ grid: PixelGrid, _ palette: Palette, shadow: Bool = true) -> CGImage {
+        let w = grid.width, h = grid.height + (shadow ? 1 : 0)
         var bytes = [UInt8](repeating: 0, count: w * h * 4)
         for y in 0..<grid.height {
             for x in 0..<grid.width where grid[x, y] != 0 {
@@ -71,7 +83,7 @@ final class Sprites {
         // Shadow: ink at 14% under the lowest row, one pixel wider on each side.
         let ground = (0..<grid.height).last { y in (0..<grid.width).contains { grid[$0, y] != 0 } } ?? grid.height - 1
         let feet = (0..<grid.width).filter { grid[$0, ground] != 0 }
-        if let lo = feet.min(), let hi = feet.max() {
+        if shadow, let lo = feet.min(), let hi = feet.max() {
             let a = 0.14
             for x in max(0, lo - 1)...min(w - 1, hi + 1) {
                 let p = (grid.height * w + x) * 4
