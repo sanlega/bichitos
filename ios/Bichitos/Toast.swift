@@ -36,7 +36,7 @@ struct Toasts {
         case let .emigrated(a, _): return "moved \(a)"
         case let .escaped(a): return "escaped \(a)"
         case let .recovered(a): return "recovered \(a)"
-        case let .unlocked(d): return "unlocked \(d)"
+        case let .unlocked(d, _): return "unlocked \(d)"
         }
     }
 }

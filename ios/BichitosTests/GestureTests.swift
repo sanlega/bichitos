@@ -67,11 +67,11 @@ final class GestureTests: XCTestCase {
     func testThrownBichitoGetsDizzyAndSlowsDown() {
         var w = World(seed: 2)
         var rng = SeededRNG(seed: 2)
-        let id = w.add(Recipe.random(using: &rng), at: Vec(500, 800))
-        w.visibleRect = Rect(x: 0, y: 0, w: 1000, h: 1600)
+        let id = w.add(Recipe.random(using: &rng), at: Vec(500, 300))
+        w.visibleRect = w.bounds
         w.grab(id)
-        w.move(id, to: Vec(400, 700))
-        XCTAssertEqual(w.bichito(id)?.pos, Vec(400, 700))
+        w.move(id, to: Vec(400, 250))
+        XCTAssertEqual(w.bichito(id)?.pos, Vec(400, 250))
         w.release(id, velocity: Vec(900, 0))
         XCTAssertGreaterThan(w.bichito(id)?.dizzy ?? 0, 2)
         for _ in 0..<20 { w.tick() }

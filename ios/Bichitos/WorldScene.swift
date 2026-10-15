@@ -52,6 +52,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var noteNodes: [Int: SKNode] = [:]
     /// Tray toggle: a tap on the ground drops food.
     var foodMode = false
+    var foodKind = Food.Kind.fruta
     private var touch: Touch?
     private var finger: UITouch?
     private var grabOffset = Vec.zero
@@ -99,7 +100,7 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Keeps the camera on the (possibly grown) map and tells the simulation what is on screen.
     private func fit() {
-        lens.clamp(to: world.size, screenSize)
+        lens.clamp(to: world.bounds, screenSize)
         world.visibleRect = lens.rect(screenSize)
     }
 
@@ -166,11 +167,10 @@ final class WorldScene: SKScene, ObservableObject {
         Haptics.tap()
     }
 
-    /// Drops food right next to it, to the side so it doesn't land under its body.
+    /// Drops its favourite food right next to it, to the side so it doesn't land under its body.
     func feed(_ id: Int) {
         guard let b = world.bichito(id) else { return }
-        // TODO(#41): drop its favourite food once foods have kinds (PR #54); for now, the default food.
-        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0))
+        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0), kind: b.favorite)
         Haptics.tap()
     }
 
@@ -239,6 +239,7 @@ final class WorldScene: SKScene, ObservableObject {
             // Feet sit a bit below the body centre the simulation tracks.
             node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
             node.zPosition = depth(node.position)
+            node.level = level
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
@@ -246,8 +247,8 @@ final class WorldScene: SKScene, ObservableObject {
             bichitoNodes[id] = nil
         }
         sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
-        sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: makeEgg)
-        sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: makeNote)
+        sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
+        sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
     /// Each district is a tinted patch of ground with its name near the top.
@@ -278,7 +279,7 @@ final class WorldScene: SKScene, ObservableObject {
     }
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
-    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: () -> SKNode) {
+    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode) {
         var alive = Set<Int>()
         for (id, pos) in items {
             alive.insert(id)
@@ -286,7 +287,7 @@ final class WorldScene: SKScene, ObservableObject {
             if let n = nodes[id] {
                 node = n
             } else {
-                node = make()
+                node = make(id)
                 nodes[id] = node
                 addChild(node)
             }
@@ -309,10 +310,11 @@ final class WorldScene: SKScene, ObservableObject {
     /// Lower on screen = closer = drawn on top.
     private func depth(_ p: CGPoint) -> CGFloat { 1000 - p.y / 10 }
 
-    private func makeFood() -> SKNode {
-        let n = SKShapeNode(circleOfRadius: 3 * pixel)
-        n.fillColor = Ink.accent
-        n.strokeColor = Ink.ink.withAlphaComponent(0.2)
+    private func makeFood(_ id: Int) -> SKNode {
+        let t = Sprites.shared.texture(world.foods.first { $0.id == id }?.kind ?? .fruta)
+        let n = SKSpriteNode(texture: t, size: CGSize(width: t.size().width * pixel, height: t.size().height * pixel))
+        // Centred on its world point, 6 whole pixels up from the shadow row, so it never straddles device pixels.
+        n.anchorPoint = CGPoint(x: 0.5, y: 6 / t.size().height)
         return n
     }
 
@@ -379,7 +381,7 @@ extension WorldScene {
         switch g.tapAction {
         case let .peek(id): onPeek?(id); Haptics.tap()
         case .close: onPeek?(nil)
-        case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
+        case .feed: world.dropFood(at: worldPoint(t.location(in: view)), kind: foodKind); Haptics.tap()
         default: break
         }
         if g.isDrag, let id = g.target {
@@ -413,12 +415,15 @@ enum Haptics {
 }
 
 /// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
+/// Name and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
     private let label = SKLabelNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
     private let recipe: Recipe
+    /// Its rest-pose pixels, for where its head is.
+    private let rest: PixelGrid
     private var pixel: CGFloat = 2
     private var spring = Spring()
     private var legPhase = 0.0
@@ -429,6 +434,14 @@ final class BichitoNode: SKNode {
     private var key: SpriteKey?
     private var shownBubble: String?
     var language = Language.es
+    /// Zoom level: decides whether the name, the state icon and phrases show.
+    var level = Camera.Level.district {
+        didSet {
+            guard level != oldValue else { return }
+            label.isHidden = !level.showsWords
+            if talk != nil { talk?.shown = -1 } else { showBubble(shownBubble) } // redrawn for the new level
+        }
+    }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
     static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
     private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
@@ -442,6 +455,7 @@ final class BichitoNode: SKNode {
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
+        rest = Generator.render(b.recipe)
         lastVel = b.vel
         lastMood = b.mood
         super.init()
@@ -451,6 +465,7 @@ final class BichitoNode: SKNode {
         show(name: b.name)
         label.verticalAlignmentMode = .top
         label.zPosition = 50
+        label.isHidden = !level.showsWords
         addChild(label)
 
         bubble.fillColor = .white
@@ -470,8 +485,9 @@ final class BichitoNode: SKNode {
     func layout(pixel: CGFloat) {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
-        label.position = CGPoint(x: 0, y: -2 * pixel)
-        bubble.position = CGPoint(x: 0, y: 26 * pixel)
+        let at = Look.anchors(rest, pixel: Double(pixel))
+        label.position = CGPoint(x: 0, y: at.name)
+        bubble.position = CGPoint(x: 0, y: at.bubble)
         shapeBubble()
     }
 
@@ -546,7 +562,10 @@ final class BichitoNode: SKNode {
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
-                if shown != t.shown { showBubble(t.text, revealed: shown) }
+                // Below Calle the phrase is still heard, but the bubble keeps the state icon.
+                if shown != t.shown {
+                    if level.showsWords { showBubble(t.text, revealed: shown) } else { showBubble(text) }
+                }
                 t.shown = shown
                 talk = t
                 return
@@ -575,7 +594,7 @@ final class BichitoNode: SKNode {
 
     /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
     private func showBubble(_ text: String?, revealed: Int = .max) {
-        bubble.isHidden = text == nil
+        bubble.isHidden = text == nil || !level.showsIcons
         guard let text else { return }
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()

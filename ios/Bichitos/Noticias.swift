@@ -52,7 +52,7 @@ extension World {
         case let .fought(a, _), let .fellInLove(a, _), let .eggLaid(a, _), let .hatched(a), let .recovered(a):
             place = bichito(a)?.pos
         case let .escaped(a): place = notes.last(where: { $0.bichito.id == a })?.pos
-        case let .emigrated(_, d), let .unlocked(d): place = districts[d].rect.center
+        case let .emigrated(_, d), let .unlocked(d, _): place = districts[d].rect.center
         }
         news.add(e, date: date, place: place ?? districts[0].rect.center)
     }
@@ -73,7 +73,7 @@ extension World {
         case let .emigrated(a, d): line = es ? "\(name(a)) se mudó a \(place(d))" : "\(name(a)) moved to \(place(d))"
         case let .escaped(a): line = es ? "\(name(a)) se escapó" : "\(name(a)) ran away"
         case let .recovered(a): line = es ? "\(name(a)) volvió a casa" : "\(name(a)) came back home"
-        case let .unlocked(d): line = es ? "Se abrió un barrio nuevo: \(place(d))" : "A new district opened: \(place(d))"
+        case let .unlocked(d, _): line = es ? "Se abrió un barrio nuevo: \(place(d))" : "A new district opened: \(place(d))"
         }
         guard item.count > 1 else { return line + "." }
         return line + (es ? " \(item.count) veces." : " \(item.count) times.")
