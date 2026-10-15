@@ -1,0 +1,83 @@
+require "base64"
+require "securerandom"
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Sign, build and upload an internal TestFlight build"
+  lane :beta do
+    app_id = "com.santilega.bichitos"
+    team_id = ENV.fetch("APPLE_TEAM_ID")
+    build_number = ENV.fetch("BUILD_NUMBER")
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_API_KEY"),
+      is_key_content_base64: false
+    )
+
+    keychain_password = SecureRandom.hex(32)
+    create_keychain(
+      name: "bichitos_ci",
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600
+    )
+
+    # Certificates and profiles live encrypted in this repo's "certificates" branch.
+    match(
+      type: "appstore",
+      app_identifier: [app_id],
+      api_key: api_key,
+      team_id: team_id,
+      storage_mode: "git",
+      git_url: "https://github.com/#{ENV.fetch('GITHUB_REPOSITORY')}.git",
+      git_branch: "certificates",
+      git_basic_authorization: Base64.strict_encode64("x-access-token:#{ENV.fetch('GITHUB_TOKEN')}"),
+      git_full_name: "Bichitos CI",
+      git_user_email: "ci@users.noreply.github.com",
+      keychain_name: "bichitos_ci",
+      keychain_password: keychain_password,
+      readonly: false,
+      force: ENV["FORCE_PROFILE"].to_s == "true"
+    )
+
+    profile = "match AppStore #{app_id}"
+    update_code_signing_settings(
+      path: "Bichitos.xcodeproj",
+      use_automatic_signing: false,
+      targets: ["Bichitos"],
+      build_configurations: ["Release"],
+      team_id: team_id,
+      code_sign_identity: "Apple Distribution",
+      profile_name: profile,
+      bundle_identifier: app_id
+    )
+
+    ipa = build_app(
+      project: "Bichitos.xcodeproj",
+      scheme: "Bichitos",
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      export_team_id: team_id,
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: { app_id => profile }
+      },
+      # A v1.2.3 tag sets the version testers see; otherwise project.yml's MARKETING_VERSION is used.
+      xcargs: ["CURRENT_PROJECT_VERSION=#{build_number}", ENV["MARKETING_VERSION"].to_s.empty? ? nil : "MARKETING_VERSION=#{ENV['MARKETING_VERSION']}"].compact.join(" ")
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      app_identifier: app_id,
+      ipa: ipa,
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      changelog: ENV.fetch("TESTFLIGHT_CHANGELOG", "").empty? ? "Bichitos build #{build_number}" : ENV["TESTFLIGHT_CHANGELOG"]
+    )
+  end
+end

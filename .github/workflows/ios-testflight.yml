@@ -1,0 +1,94 @@
+name: iOS TestFlight
+
+# Every new version uploads itself: push a tag like v1.0.1 (or publish a GitHub release with one).
+# The tag becomes the version testers see. Run it by hand for an extra build of master.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: What to test (shown to TestFlight testers)
+        required: false
+        default: ''
+      force_profile:
+        description: Regenerate the provisioning profile (after changing capabilities)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write # match stores encrypted certificates in the "certificates" branch
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: false
+          working-directory: ios
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Install fastlane
+        run: bundle install
+
+      - name: Validate configuration
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: |
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_API_KEY APPLE_TEAM_ID MATCH_PASSWORD; do
+            if [[ -z "${!v}" ]]; then echo "Missing secret $v" >&2; exit 1; fi
+          done
+
+      - name: Build and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTFLIGHT_CHANGELOG: ${{ github.event.inputs.changelog }}
+          FORCE_PROFILE: ${{ github.event.inputs.force_profile }}
+          FASTLANE_DISABLE_COLORS: '1'
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+        run: |
+          export BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            export MARKETING_VERSION="${GITHUB_REF_NAME#v}"
+            export TESTFLIGHT_CHANGELOG="${TESTFLIGHT_CHANGELOG:-$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")}"
+          fi
+          echo "Version ${MARKETING_VERSION:-from project.yml}, build $BUILD_NUMBER"
+          bundle exec fastlane ios beta
+
+      - name: Save signed IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bichitos-ipa
+          path: 'ios/*.ipa'
+          if-no-files-found: ignore
+          retention-days: 3
