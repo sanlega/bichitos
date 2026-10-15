@@ -20,6 +20,8 @@ struct Recipe: Codable, Hashable {
     var seed: UInt64
     /// Which generator draws this recipe. Old generators are kept so a bichito never changes its face.
     var engine: Int
+    /// Inherited favourite food; nil (founders, old saves) = derived from `seed`. Read `favorite`, in Comida.swift.
+    var favoriteFood: Food.Kind? = nil
 
     static let legOptions = [0, 2, 4, 6]
     static let paletteCount = 12
