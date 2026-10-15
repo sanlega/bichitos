@@ -513,8 +513,9 @@ struct World: Codable, Equatable {
         }
     }
 
-    /// Now and then a bichito moves to the district where its friends (and its own kind) live.
-    private mutating func emigrate() {
+    /// Now and then a bichito moves to the district where its friends (and its own kind) live, or the one affine to it.
+    /// Only unlocked districts are in `districts`, and full ones are skipped.
+    mutating func emigrate() {
         guard districts.count > 1 else { return }
         for i in bichitos.indices where bichitos[i].mood == .wander && roll() < 0.05 {
             let b = bichitos[i]
@@ -524,10 +525,14 @@ struct World: Codable, Equatable {
                 score[o.district] += (b.affinity[o.id] ?? 0) + (o.recipe.personality == b.recipe.personality ? 0.3 : 0)
                 count[o.district] += 1
             }
+            let affine = districts.map { $0.theme.affine == b.recipe.personality }
             func value(_ d: Int) -> Double {
-                (count[d] == 0 ? 0 : score[d] / Double(count[d])) - Double(count[d]) / Double(World.capacity) * 0.3
+                let friends = count[d] == 0 ? 0 : score[d] / Double(count[d])
+                let crowd = Double(count[d]) / Double(World.capacity) * 0.3
+                return friends - crowd + (affine[d] ? 0.4 : 0)
             }
-            guard let best = districts.indices.max(by: { value($0) < value($1) }),
+            let open = districts.indices.filter { $0 == b.district || count[$0] < World.capacity }
+            guard let best = open.max(by: { value($0) < value($1) }),
                   best != b.district, value(best) > value(b.district) + 0.25 else { continue }
             bichitos[i].district = best
             record(.emigrated(b.id, best))
