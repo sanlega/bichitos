@@ -28,6 +28,7 @@ struct Pen {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         var saved = try JSONDecoder().decode(Saved.self, from: Data(contentsOf: url))
         saved.world.fitDistricts()
+        saved.world.fitHomes()
         return saved
     }
 

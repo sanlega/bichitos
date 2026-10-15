@@ -209,6 +209,7 @@ extension Bichito {
         switch mood {
         case .wander: state = es ? "paseando" : "wandering"
         case .sleep: state = es ? "durmiendo" : "sleeping"
+        case .toBed: state = es ? "yendo a dormir" : "going to bed"
         case .eat: state = es ? "comiendo" : "eating"
         case .love: state = es ? "enamorado" : "in love"
         case .fight: state = es ? "peleando" : "fighting"
