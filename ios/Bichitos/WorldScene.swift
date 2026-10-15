@@ -26,6 +26,11 @@ final class WorldScene: SKScene {
     private var foodNodes: [Int: SKNode] = [:]
     private var eggNodes: [Int: SKNode] = [:]
     private var noteNodes: [Int: SKNode] = [:]
+    /// Tray toggle: a tap on the ground drops food.
+    var foodMode = false
+    private var touch: Touch?
+    private var finger: UITouch?
+    private var grabOffset = Vec.zero
 
     init(world: World, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
@@ -155,6 +160,82 @@ final class WorldScene: SKScene {
         n.addChild(mark)
         return n
     }
+}
+
+// MARK: - Gestures
+
+extension WorldScene {
+    /// Screen point (y down) → world point.
+    private func worldPoint(_ p: CGPoint) -> Vec {
+        Vec(origin.x + Double(p.x / unit), origin.y + Double(p.y / unit))
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard touch == nil, let t = touches.first, let view else { return }
+        let p = t.location(in: view)
+        let w = worldPoint(p)
+        let target = world.bichito(at: w, pad: Double(12 / unit))
+        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode)
+        finger = t
+        if let id = target, let b = world.bichito(id) { grabOffset = b.pos - w }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t), var g = touch, let view else { return }
+        let p = t.location(in: view)
+        if case let .grab(id) = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp) {
+            world.grab(id)
+            Haptics.tap()
+        }
+        touch = g
+        if g.isDrag, let id = g.target { world.move(id, to: worldPoint(p) + grabOffset) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t), let g = touch, let view else { return }
+        switch g.tapAction {
+        case let .pet(id): world.pet(id); Haptics.tap()
+        case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
+        default: break
+        }
+        if g.isDrag, let id = g.target {
+            // Throw with the finger's speed, capped so a wild flick doesn't cross the whole map.
+            var v = g.velocity(at: t.timestamp) * Double(1 / unit)
+            if v.length > 2000 { v = v.unit * 2000 }
+            world.release(id, velocity: v)
+        }
+        touch = nil
+        finger = nil
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let t = finger, touches.contains(t) else { return }
+        if let g = touch, g.isDrag, let id = g.target { world.release(id, velocity: .zero) }
+        touch = nil
+        finger = nil
+    }
+
+    /// Shaking the phone: everybody jumps.
+    func scareEveryone() {
+        world.scare(at: nil)
+        Haptics.tap()
+    }
+
+    /// Placeholder for the editor: a random bichito lands on screen.
+    func addRandomBichito() {
+        guard let v = world.visibleRect, world.bichitos.count < World.maxPopulation else { return }
+        var rng = SystemRandomNumberGenerator()
+        let p = Vec(v.x + .random(in: 0.2...0.8) * v.w, v.y + .random(in: 0.3...0.7) * v.h)
+        let id = world.add(Recipe.random(using: &rng), at: p)
+        if let i = world.index(of: id) { world.bichitos[i].enter(.happy, for: 1.5) }
+        Haptics.tap()
+    }
+}
+
+@MainActor
+enum Haptics {
+    private static let light = UIImpactFeedbackGenerator(style: .light)
+    static func tap() { light.impactOccurred() }
 }
 
 /// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
