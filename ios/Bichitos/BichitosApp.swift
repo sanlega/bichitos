@@ -1,4 +1,3 @@
-import SpriteKit
 import SwiftUI
 
 @main
@@ -8,8 +7,7 @@ struct BichitosApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SpriteView(scene: scene)
-                .ignoresSafeArea()
+            WorldView(scene: scene)
         }
     }
 }
