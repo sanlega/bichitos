@@ -37,7 +37,7 @@ struct District: Codable, Equatable {
     func name(_ language: Language) -> String { (language == .es ? District.namesEs : District.namesEn)[index] }
 }
 
-struct Food: Codable, Equatable { let id: Int; var pos: Vec }
+struct Food: Codable, Equatable { let id: Int; var pos: Vec; var kind = Kind.fruta } // kinds and favourites: Comida.swift
 struct Egg: Codable, Equatable { let id: Int; var pos: Vec; var parents: [Int]; var recipe: Recipe; var hatchIn: Double }
 /// What an escaped bichito leaves behind. It keeps the bichito so food at the note can bring it back.
 struct Note: Codable, Equatable { var pos: Vec; var text: String; var bichito: Bichito }
@@ -195,12 +195,12 @@ struct World: Codable, Equatable {
         bichitos[i].dizzy = min(3, v.length / 300)
     }
 
-    /// Hungry bichitos run to it. Dropped next to a goodbye note, it brings the runaway back.
+    /// Hungry bichitos run to it. Its favourite dropped next to a goodbye note brings the runaway back.
     @discardableResult
-    mutating func dropFood(at p: Vec) -> Int {
-        if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 }) { recover(n) }
+    mutating func dropFood(at p: Vec, kind: Food.Kind = .fruta) -> Int {
+        if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 && $0.bichito.favorite == kind }) { recover(n) }
         let id = newId()
-        foods.append(Food(id: id, pos: clamp(p, 4)))
+        foods.append(Food(id: id, pos: clamp(p, 4), kind: kind))
         for i in bichitos.indices where bichitos[i].needs.hunger < 0.7 && bichitos[i].mood.isFree {
             bichitos[i].enter(.eat, for: 30, target: id)
         }
@@ -307,7 +307,7 @@ struct World: Codable, Equatable {
             if let f = foods.first(where: { $0.id == b.target }) {
                 let d = f.pos - b.pos
                 // Reachable within this step counts as there, so the 2 Hz off-screen step never overshoots the food.
-                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f.id, &b) } else { dir = d.unit; pace = 1.3 }
+                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f, &b) } else { dir = d.unit; pace = 1.3 }
             } else {
                 b.timer = 0
             }
@@ -358,9 +358,9 @@ struct World: Codable, Equatable {
         }
     }
 
-    private mutating func eat(_ food: Int, _ b: inout Bichito) {
-        foods.removeAll { $0.id == food }
-        b.needs.hunger = 1
+    private mutating func eat(_ food: Food, _ b: inout Bichito) {
+        foods.removeAll { $0.id == food.id }
+        b.eat(food.kind)
         b.enter(.happy, for: 2)
     }
 
