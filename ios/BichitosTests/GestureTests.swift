@@ -129,9 +129,11 @@ final class GestureTests: XCTestCase {
         var rng = SeededRNG(seed: 2)
         let id = w.add(Recipe.random(using: &rng), at: Vec(500, 300))
         w.visibleRect = w.bounds
+        // A row with nothing in the way of the throw: buildings block now (#34).
+        let y = stride(from: 100.0, to: 500, by: 16).first { y in stride(from: 380.0, through: 560, by: 8).allSatisfy { w.terrain.walkable(Vec($0, y)) } }!
         w.grab(id)
-        w.move(id, to: Vec(400, 250))
-        XCTAssertEqual(w.bichito(id)?.pos, Vec(400, 250))
+        w.move(id, to: Vec(400, y))
+        XCTAssertEqual(w.bichito(id)?.pos, Vec(400, y))
         w.release(id, velocity: Vec(900, 0))
         XCTAssertGreaterThan(w.bichito(id)?.dizzy ?? 0, 2)
         for _ in 0..<20 { w.tick() }
