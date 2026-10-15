@@ -26,6 +26,7 @@ final class WorldScene: SKScene {
     private var foodNodes: [Int: SKNode] = [:]
     private var eggNodes: [Int: SKNode] = [:]
     private var noteNodes: [Int: SKNode] = [:]
+    private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
 
     init(world: World, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
@@ -55,6 +56,15 @@ final class WorldScene: SKScene {
         for node in bichitoNodes.values { node.layout(pixel: pixel) }
     }
 
+    // MARK: - New bichitos
+
+    /// A bichito from the editor: it appears in the middle of the screen, falls in from above and lands with a boing.
+    func drop(_ recipe: Recipe, name: String, description: String) {
+        let id = world.add(recipe, at: world.visibleRect?.center, name: name, description: description)
+        if let i = world.index(of: id) { world.bichitos[i].enter(.happy, for: 2) }
+        dropping.insert(id)
+    }
+
     // MARK: - Frame
 
     override func update(_ currentTime: TimeInterval) {
@@ -81,6 +91,7 @@ final class WorldScene: SKScene {
                 node = BichitoNode(b, pixel: pixel)
                 bichitoNodes[b.id] = node
                 addChild(node)
+                if dropping.remove(b.id) != nil { node.dropIn(from: size.height / 2) }
             }
             let from = previous[b.id] ?? b.pos
             let p = from + (b.pos - from) * alpha
@@ -220,6 +231,21 @@ final class BichitoNode: SKNode {
         bubble.path = path
         bubble.position = CGPoint(x: 0, y: 26 * pixel)
         bubbleText.position = CGPoint(x: 0, y: tail + h / 2)
+    }
+
+    /// Falls from `height` points above its feet, then squashes on landing and springs back.
+    func dropIn(from height: CGFloat) {
+        let fall = 0.45
+        spring.kick(3) // stretched while falling
+        sprite.position.y = height
+        sprite.run(.sequence([
+            // Whole points, so the pixels stay on the grid on the way down.
+            .customAction(withDuration: fall) { node, t in
+                let k = min(Double(t) / fall, 1)
+                node.position.y = (height * CGFloat(1 - k * k)).rounded()
+            },
+            .run { [weak self] in self?.spring.kick(-8) },
+        ]))
     }
 
     /// After every simulation tick: speeding up stretches, braking or bonks squash, a new mood gives a hop.
