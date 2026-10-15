@@ -5,6 +5,8 @@ struct CreatorSheet: View {
     let language: Language
     /// Recipe, name and description of the bichito to drop into the world.
     let onRelease: (Recipe, String, String) -> Void
+    /// Names already in the world, which a generated name avoids.
+    let taken: Set<String>
 
     @Environment(\.dismiss) private var dismiss
     @State private var recipe: Recipe
@@ -12,20 +14,21 @@ struct CreatorSheet: View {
     @State private var name: String
     @State private var unfolded: Set<Gene> = []
 
-    init(seed: UInt64 = .random(in: 1...UInt64.max), language: Language, onRelease: @escaping (Recipe, String, String) -> Void) {
+    init(seed: UInt64 = .random(in: 1...UInt64.max), language: Language, taken: Set<String> = [], onRelease: @escaping (Recipe, String, String) -> Void) {
         var rng = SeededRNG(seed: seed)
         let recipe = Recipe.random(using: &rng)
         let textSeed = rng.next()
         _recipe = State(initialValue: recipe)
         _textSeed = State(initialValue: textSeed)
-        _name = State(initialValue: Names.make(seed: textSeed, language: language).name)
+        _name = State(initialValue: Names.make(seed: textSeed, language: language, taken: taken).name)
         self.language = language
+        self.taken = taken
         self.onRelease = onRelease
     }
 
     private var finalName: String {
         let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return typed.isEmpty ? Names.make(seed: textSeed, language: language).name : typed
+        return typed.isEmpty ? Names.make(seed: textSeed, language: language, taken: taken).name : typed
     }
 
     private var description: String { Names.make(seed: textSeed, language: language, name: finalName).description }
@@ -134,7 +137,7 @@ struct CreatorSheet: View {
 
     private func rerollText() {
         textSeed = .random(in: 1...UInt64.max)
-        name = Names.make(seed: textSeed, language: language).name
+        name = Names.make(seed: textSeed, language: language, taken: taken).name
     }
 
     private func randomiseAll() {

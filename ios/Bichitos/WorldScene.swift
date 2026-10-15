@@ -26,7 +26,7 @@ final class WorldScene: SKScene, ObservableObject {
     @Published private(set) var title = ""
     /// The live event on the toast under the title, if any.
     @Published private(set) var toast: WorldEvent? = nil
-    /// Tapping the toast (#51 takes the camera there).
+    /// Tapping the toast: `WorldView` sends the camera to the story.
     var onToastTap: ((WorldEvent) -> Void)?
     private var toasts = Toasts()
     private var seenEvents: Int
@@ -172,9 +172,33 @@ final class WorldScene: SKScene, ObservableObject {
     /// Called with the bichito under a tap, or nil when the tap was on the ground (closes the peek).
     var onPeek: ((Int?) -> Void)?
 
+    /// The squash comes on every pet, not only when the mood changes, so a rub keeps it squishing.
     func pet(_ id: Int) {
-        world.pet(id)
+        if world.pet(id) { bichitoNodes[id]?.squish() }
         Haptics.tap()
+    }
+
+    /// VoiceOver «Lanzar».
+    func toss(_ id: Int) {
+        var rng = SystemRandomNumberGenerator()
+        world.toss(id, using: &rng)
+        Haptics.tap()
+    }
+
+    /// VoiceOver: one on-screen bichito, its body's frame in view points (y down).
+    struct Seen: Identifiable {
+        let id: Int
+        let label: String
+        let frame: CGRect
+    }
+
+    var onScreen: [Seen] {
+        guard let visible = world.visibleRect else { return [] }
+        return world.bichitos.filter { visible.contains($0.pos) }.map { b in
+            let r = CGFloat(b.recipe.radius) * unit
+            let c = CGPoint(x: CGFloat(b.pos.x - origin.x) * unit, y: CGFloat(b.pos.y - origin.y) * unit)
+            return Seen(id: b.id, label: b.voiceLabel, frame: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+        }
     }
 
     /// Drops its favourite food right next to it, to the side so it doesn't land under its body.
@@ -187,10 +211,12 @@ final class WorldScene: SKScene, ObservableObject {
     func startFollowing(_ id: Int) { follow.start(id) }
 
     /// `BarrioPicker`: the camera travels to the middle of a district (with Reduce Motion, it is just there).
-    func travel(to district: Int) {
+    func travel(to district: Int) { travel(to: world.districts[district].rect.center) }
+
+    /// `NewsFeed` and `Toast`: the camera travels to where a story happened.
+    func travel(to place: Vec) {
         follow.stop()
-        let to = world.districts[district].rect.center
-        if UIAccessibility.isReduceMotionEnabled { lens.center = to } else { lens.travel(to: to) }
+        if UIAccessibility.isReduceMotionEnabled { lens.center = place } else { lens.travel(to: place) }
         Haptics.tap()
     }
 
@@ -463,9 +489,9 @@ extension WorldScene {
         let p = t.location(in: view)
         let w = worldPoint(p)
         let target = world.bichito(at: w, pad: Double(12 / unit))
-        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode)
+        let reach = target.flatMap { world.bichito($0) }.map { $0.recipe.radius * Double(unit) + 12 } ?? 0
+        touch = Touch(at: Vec(Double(p.x), Double(p.y)), time: t.timestamp, target: target, foodMode: foodMode, reach: reach)
         finger = t
-        if let id = target, let b = world.bichito(id) { grabOffset = b.pos - w }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -473,9 +499,14 @@ extension WorldScene {
         let p = t.location(in: view)
         let action = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp)
         follow.after(action)
-        if case let .grab(id) = action {
+        switch action {
+        case let .grab(id):
+            // Taken where the finger is now, so it doesn't jump by the bit the finger moved before grabbing.
+            if let b = world.bichito(id) { grabOffset = b.pos - worldPoint(p) }
             world.grab(id)
             Haptics.tap()
+        case let .rub(id): pet(id)
+        default: break
         }
         touch = g
         guard g.isDrag else { return }
@@ -526,13 +557,17 @@ enum Haptics {
     static func tap() { light.impactOccurred() }
 }
 
-/// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
-/// Name and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
+/// One bichito on screen: sprite (with its pixel shadow), name under it, state icon or phrase bubble over it.
+/// Name, icon and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
     private let label = SKLabelNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
+    /// The pixel state icon, bare over the head (DESIGN.md "Los dos mundos": no soft bubble around pixel art).
+    private let icon = SKSpriteNode()
+    /// Points per icon pixel: fixed on screen, an integer so the pixels stay square.
+    private static let iconScale: CGFloat = 2
     private let recipe: Recipe
     /// Its rest-pose pixels, for where its head is.
     private let rest: PixelGrid
@@ -544,14 +579,14 @@ final class BichitoNode: SKNode {
     private var lastVel: Vec
     private var lastMood: Bichito.Mood
     private var key: SpriteKey?
-    private var shownBubble: String?
+    private var shownIcon: Look.Icon?
     var language = Language.es
     /// Zoom level: decides whether the name, the state icon and phrases show.
     var level = Camera.Level.district {
         didSet {
             guard level != oldValue else { return }
             label.isHidden = !level.showsWords
-            if talk != nil { talk?.shown = -1 } else { showBubble(shownBubble) } // redrawn for the new level
+            if talk != nil { talk?.shown = -1 } else { show(icon: shownIcon) } // redrawn for the new level
         }
     }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
@@ -589,6 +624,12 @@ final class BichitoNode: SKNode {
         bubbleText.preferredMaxLayoutWidth = BichitoNode.bubbleMaxWidth
         bubble.addChild(bubbleText)
         addChild(bubble)
+
+        icon.anchorPoint = CGPoint(x: 0.5, y: 0)
+        icon.size = CGSize(width: CGFloat(Look.Icon.canvas) * BichitoNode.iconScale, height: CGFloat(Look.Icon.canvas) * BichitoNode.iconScale)
+        icon.zPosition = 100
+        icon.isHidden = true
+        addChild(icon)
         layout(pixel: pixel)
     }
 
@@ -600,6 +641,7 @@ final class BichitoNode: SKNode {
         let at = Look.anchors(rest, pixel: Double(pixel))
         label.position = CGPoint(x: 0, y: at.name)
         bubble.position = CGPoint(x: 0, y: at.bubble)
+        icon.position = bubble.position
         shapeBubble()
     }
 
@@ -624,6 +666,9 @@ final class BichitoNode: SKNode {
             .foregroundColor: Ink.ink.withAlphaComponent(0.7),
         ])
     }
+
+    /// A happy squash: the spring bounces it back.
+    func squish() { spring.kick(-5) }
 
     /// Falls from `height` points above its feet, then squashes on landing and springs back.
     func dropIn(from height: CGFloat) {
@@ -669,30 +714,30 @@ final class BichitoNode: SKNode {
             sprite.texture = Sprites.shared.texture(next)
         }
         if b.name != shownName { show(name: b.name) }
-        let text = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
+        let state = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
         if var t = talk {
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
                 // Below Calle the phrase is still heard, but the bubble keeps the state icon.
                 if shown != t.shown {
-                    if level.showsWords { showBubble(t.text, revealed: shown) } else { showBubble(text) }
+                    if level.showsWords { showBubble(t.text, revealed: shown) } else { show(icon: state) }
                 }
                 t.shown = shown
                 talk = t
                 return
             }
             talk = nil
-            shownBubble = text
-            showBubble(text)
+            shownIcon = state
+            show(icon: state)
         }
-        if text != shownBubble {
-            shownBubble = text
-            if text == nil || !startTalking(b) { showBubble(text) }
+        if state != shownIcon {
+            shownIcon = state
+            if state == nil || !startTalking(b) { show(icon: state) }
         }
     }
 
-    /// Voice (#14): now and then, only on screen, a phrase replaces the emoji and appears in step with the babble.
+    /// Voice (#14): now and then, only on screen, a phrase replaces the icon and appears in step with the babble.
     private func startTalking(_ b: Bichito) -> Bool {
         guard BichitoNode.alwaysTalk || Double.random(in: 0..<1) < 0.35,
               let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return false }
@@ -704,10 +749,16 @@ final class BichitoNode: SKNode {
         return true
     }
 
+    private func show(icon state: Look.Icon?) {
+        bubble.isHidden = true
+        icon.isHidden = state == nil || !level.showsIcons
+        if let state { icon.texture = Sprites.shared.texture(state, accent: Palette.of(recipe).colors[5]) }
+    }
+
     /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
-    private func showBubble(_ text: String?, revealed: Int = .max) {
-        bubble.isHidden = text == nil || !level.showsIcons
-        guard let text else { return }
+    private func showBubble(_ text: String, revealed: Int = .max) {
+        icon.isHidden = true
+        bubble.isHidden = !level.showsIcons
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()
         style.alignment = .center

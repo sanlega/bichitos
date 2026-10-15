@@ -125,8 +125,8 @@ final class CameraTests: XCTestCase {
 
     func testMovingOutShowsASuitcase() {
         let fed = Bichito.Needs()
-        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: true), "🧳")
+        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: true), .suitcase)
         XCTAssertNil(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: false))
-        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0, moving: true), "💤")
+        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0, moving: true), .zzz)
     }
 }
