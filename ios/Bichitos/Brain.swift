@@ -4,6 +4,7 @@ import Foundation
 struct Bichito: Codable, Equatable, Identifiable {
     enum Mood: String, Codable {
         case wander, sleep, eat, love, fight, chase, flee, imitate, scared, happy, held, incubating
+        case toBed // walking to its casita (or a tree) to sleep there; `target` is that building's id
         /// Moods an encounter or food can pull a bichito out of.
         var isFree: Bool { self == .wander || self == .happy }
     }
@@ -27,6 +28,7 @@ struct Bichito: Codable, Equatable, Identifiable {
     var needs = Needs()
     var affinity: [Int: Double] = [:] // other id → −1…1
     var district = 0          // home district index
+    var home: Int?            // its casita's `Building.id` (Edificios.swift); nil: none had room, it sleeps under a tree
     var dizzy = 0.0           // seconds tumbling after a throw or a bonk: momentum only, no steering
     var calm = 0.0            // seconds until it can have another encounter
     var breedCooldown = 0.0

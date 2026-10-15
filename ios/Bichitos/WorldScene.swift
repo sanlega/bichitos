@@ -37,7 +37,7 @@ final class WorldScene: SKScene, ObservableObject {
 
     private var lens: Camera
     private var pinchFrom = 3.0
-    /// Each district's ground (`Ground`), with its name near the top and its water reflections.
+    /// Each district's ground (`Ground`) and its water reflections.
     private var districtNodes: [SKSpriteNode] = []
     private var glintNodes: [[(node: SKSpriteNode, at: Vec)]] = []
     /// Painted ground, only what `Ground.keep` says (#84); painted off the main thread, `painting` meanwhile.
@@ -73,6 +73,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var walls: [CGRect] = []
     private let mapLayer = SKNode()
     private var mapKey = ""
+    private var mapShown = false // where `mapLayer` is fading to
     /// Tray toggle: a tap on the ground drops food.
     var foodMode = false
     var foodKind = Food.Kind.fruta
@@ -135,7 +136,7 @@ final class WorldScene: SKScene, ObservableObject {
             let start = UserDefaults.standard.double(forKey: "screenshot-zoom")
             lens.scale = Camera.Level.nearest(start > 0 ? start : max(3, Double(Int(min(size.width, size.height) / 140)))).scale
         }
-        if mapLayer.parent == nil { mapLayer.zPosition = -50; addChild(mapLayer) }
+        if mapLayer.parent == nil { mapLayer.zPosition = -50; mapLayer.alpha = 0; mapLayer.isHidden = true; addChild(mapLayer) }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -369,22 +370,13 @@ final class WorldScene: SKScene, ObservableObject {
         for (n, r) in zip(named, names) { n.placeName(r) }
     }
 
-    /// Each district is its painted ground with its name near the top; the Mapa level draws blobs instead (`drawMap`).
+    /// Each district is its painted ground (its name shows only on the Mapa level); the Mapa level draws blobs instead (`drawMap`).
     private func drawDistricts() {
         while districtNodes.count < world.districts.count {
             let d = world.districts[districtNodes.count]
             let patch = SKSpriteNode() // its texture comes before any size
             patch.anchorPoint = CGPoint(x: 0, y: 1)
             patch.zPosition = -100
-            let font = UIFont.systemFont(ofSize: 28, weight: .heavy)
-            let label = SKLabelNode()
-            label.attributedText = NSAttributedString(string: d.name(world.language), attributes: [
-                .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 28),
-                .foregroundColor: Ink.ink.withAlphaComponent(0.18),
-            ])
-            label.verticalAlignmentMode = .top
-            label.zPosition = 2
-            patch.addChild(label)
             // Two reflections on the water, fading in and out every 4 s, half a cycle apart.
             let glints = Ground.glints(world.terrain, in: d.rect).enumerated().map { k, p in
                 let g = SKSpriteNode(texture: Ground.glint)
@@ -400,8 +392,16 @@ final class WorldScene: SKScene, ObservableObject {
             addChild(patch)
             districtNodes.append(patch)
         }
-        mapLayer.isHidden = level != .map
-        if level == .map { drawMap() }
+        // #83: the Mapa layer (names, blobs, locked outlines) fades in and out as a pinch crosses the threshold.
+        let onMap = level == .map
+        if onMap != mapShown {
+            mapShown = onMap
+            mapLayer.removeAction(forKey: "fade")
+            let t = UIAccessibility.isReduceMotionEnabled ? 0 : 0.2
+            if onMap { mapLayer.isHidden = false }
+            mapLayer.run(onMap ? .fadeIn(withDuration: t) : .sequence([.fadeOut(withDuration: t), .hide()]), withKey: "fade")
+        }
+        if !mapLayer.isHidden { drawMap() }
         let seed = world.layoutSeed ?? 0, still = UIAccessibility.isReduceMotionEnabled
         kept = Ground.keep(lens.rect(screenSize), here: here, world.districts, seed: seed, level: level)
         groundTextures = groundTextures.filter { kept.contains($0.key) }
@@ -420,7 +420,6 @@ final class WorldScene: SKScene, ObservableObject {
             let f = Ground.frame(world.districts[k].rect)
             patch.position = screen(Vec(f.x, f.y))
             patch.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
-            patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -CGFloat(Ground.margin) * unit - 60)
             for g in glintNodes[k] {
                 g.node.isHidden = still // Reduce Motion: no reflections
                 g.node.position = CGPoint(x: CGFloat(g.at.x - f.x) * unit, y: -CGFloat(g.at.y - f.y) * unit)
