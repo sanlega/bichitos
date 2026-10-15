@@ -1,0 +1,67 @@
+name: iOS build check
+
+on:
+  push:
+    branches: [master]
+    paths: ['ios/**', '.github/workflows/ios-build-check.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios-build-check.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Pick a simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['devices']
+          sims = [x for k, v in sorted(d.items(), reverse=True) if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          pick = next((x for n in ('iPhone 17 Pro Max', 'iPhone 16 Pro Max') for x in sims if x['name'] == n), sims[0])
+          print(pick['name'], file=sys.stderr)
+          print(pick['udid'])
+          ")
+          echo "SIM=$UDID" >> "$GITHUB_ENV"
+
+      - name: Build and test
+        # TEST_RUNNER_GALLERY_DIR reaches the tests as GALLERY_DIR: the generator gallery test writes its PNGs there.
+        run: |
+          set +e
+          mkdir -p gallery
+          TEST_RUNNER_GALLERY_DIR="$PWD/gallery" xcodebuild -project Bichitos.xcodeproj -scheme Bichitos -destination "id=$SIM" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO test > build.log 2>&1
+          status=$?
+          grep -E "error:|warning: .*Bichitos|Test Case .* (passed|failed)|XCTAssert|\*\* (TEST|BUILD)" build.log | sort -u | head -300
+          exit $status
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ios/build.log
+
+      - name: Upload generator gallery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery
+          path: ios/gallery
+          if-no-files-found: ignore
