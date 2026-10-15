@@ -193,6 +193,6 @@ final class SimTests: XCTestCase {
         XCTAssertTrue(Names.make(seed: 5, language: .en).description.contains("old"))
         XCTAssertGreaterThanOrEqual(min(Names.namesEs.count, Names.namesEn.count), 30)
         XCTAssertGreaterThanOrEqual(min(Names.quirksEs.count, Names.quirksEn.count), 40)
-        print((1...5).map { Names.make(seed: $0, language: .es).description }.joined(separator: " | "))
+        print((UInt64(1)...5).map { Names.make(seed: $0, language: .es).description }.joined(separator: " | "))
     }
 }

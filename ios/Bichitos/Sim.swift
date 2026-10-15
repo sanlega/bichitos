@@ -76,8 +76,8 @@ struct World: Codable, Equatable {
     static let districtSize = Vec(1000, 1600)
     static let capacity = 12              // bichitos per district before the next one unlocks
     static var maxPopulation: Int { capacity * District.namesEs.count }
-    static let lod = 5                    // off-screen bichitos move every 5 ticks with a 5× step
-    static let encounterEvery = 20        // ticks between encounter checks
+    static let lod = 10                   // off-screen bichitos move every 10 ticks (2 Hz) with a 10× step
+    static let encounterEvery = 20        // ticks between encounter checks; doubled when nobody watches
     static let hungerSpan = 36 * 3600.0   // seconds from full to starving
     static let affectionSpan = 48 * 3600.0
     static let awakeSpan = 16 * 3600.0
@@ -239,7 +239,7 @@ struct World: Codable, Equatable {
             update(i, visible ? World.dt : World.dt * Double(World.lod))
         }
         if watched { collide() }
-        if tickCount % World.encounterEvery == 0 { encounters() }
+        if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters() }
         if tickCount % 600 == 0 { emigrate() }
         if tickCount % 20 == 0 { escapeNeglected() }
         hatchEggs(World.dt)
@@ -306,7 +306,7 @@ struct World: Codable, Equatable {
         case .eat:
             if let f = foods.first(where: { $0.id == b.target }) {
                 let d = f.pos - b.pos
-                if d.length < r.radius + 6 { eat(f.id, &b) } else { dir = d.unit; pace = 1.3 }
+                if d.length < r.radius + 6 + r.speed * 1.3 * h { eat(f.id, &b) } // reachable this step: no overshooting at 2 Hz else { dir = d.unit; pace = 1.3 }
             } else {
                 b.timer = 0
             }
