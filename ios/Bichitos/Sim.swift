@@ -59,6 +59,20 @@ struct SpatialHash {
     }
 }
 
+/// TEMPORARY (#65): where `tick()` spends its time, in ns per phase.
+enum Profile {
+    static let names = ["move loop", "  update()", "collide", "encounters", "emigrate", "escapeNeglected", "hatchEggs", "tick total", "record (events+news)"]
+    static var ns = Array(repeating: 0, count: 9)
+    static var hits = Array(repeating: 0, count: 9)
+    static func now() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+    static func add(_ k: Int, _ since: UInt64) { ns[k] += Int(now() - since); hits[k] += 1 }
+    static func reset() { ns = Array(repeating: 0, count: 9); hits = ns }
+    static var report: String {
+        names.indices.map { String(format: "%@: %.3f s (%d)", names[$0], Double(ns[$0]) / 1e9, hits[$0]) }.joined(separator: "
+")
+    }
+}
+
 /// The whole terrarium. Pure value, deterministic for a seed, always advanced in fixed 1/20 s ticks.
 struct World: Codable, Equatable {
     static let hz = 20.0
@@ -221,19 +235,34 @@ struct World: Codable, Equatable {
     }
 
     mutating func tick() {
+        let p0 = Profile.now()
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
         for i in bichitos.indices {
             let visible = watched && isVisible(bichitos[i].pos)
             if !visible && (tickCount + i) % World.lod != 0 { continue }
+            let u0 = Profile.now()
             update(i, visible ? World.dt : World.dt * Double(World.lod))
+            Profile.add(1, u0)
         }
+        let p1 = Profile.now()
+        Profile.ns[0] += Int(p1 - p0)
         if watched { collide() }
+        Profile.add(2, p1)
+        let p2 = Profile.now()
         if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters() }
+        Profile.add(3, p2)
+        let p3 = Profile.now()
         if tickCount % 600 == 0 { emigrate() }
+        Profile.add(4, p3)
+        let p4 = Profile.now()
         if tickCount % 20 == 0 { escapeNeglected() }
+        Profile.add(5, p4)
+        let p5 = Profile.now()
         hatchEggs(World.dt)
+        Profile.add(6, p5)
+        Profile.add(7, p0)
     }
 
     /// Fast-forward after being away: the last 2 h fully simulated, the rest (up to 7 days) only needs and escapes.
@@ -567,6 +596,8 @@ struct World: Codable, Equatable {
     }
 
     private mutating func record(_ e: WorldEvent) {
+        let r0 = Profile.now()
+        defer { Profile.add(8, r0) }
         events.append(e)
         report(e)
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
