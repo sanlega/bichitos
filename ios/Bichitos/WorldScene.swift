@@ -70,6 +70,12 @@ final class WorldScene: SKScene, ObservableObject {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// Takes back this scene's world after a fast-forward (coming back to the app); nodes follow it by id.
+    func fastForwarded(to world: World) {
+        self.world = world
+        previous = [:]
+    }
+
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }

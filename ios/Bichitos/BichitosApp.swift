@@ -2,14 +2,11 @@ import SwiftUI
 
 @main
 struct BichitosApp: App {
-    // `-screenshot` (CI) starts a fixed, staged world so the captured screen is always the same;
-    // `-border` stages the edge between two districts instead.
-    @State private var scene = CommandLine.arguments.contains("-border") ? Terrarium.border()
-        : CommandLine.arguments.contains("-screenshot") ? Terrarium.screenshot() : Terrarium.random()
-
     var body: some Scene {
         WindowGroup {
-            WorldView(scene: scene)
+            PenView { scene in
+                WorldView(scene: scene)
+            }
         }
     }
 }
@@ -72,6 +69,14 @@ enum Terrarium {
         return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
             w.bichitos[leaving].district = 1 // after the scene noted its old home, so the move is announced
         }
+    }
+
+    /// `-screenshot-away` (CI): a fixed world to fast-forward 3 h, so the "mientras no estabas" sheet has news.
+    static func away() -> World {
+        var w = World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))
+        var rng = SeededRNG(seed: 7)
+        spawn(9, in: w.districts[0].rect, world: &w, rng: &rng)
+        return w
     }
 
     /// Spreads bichitos over a jittered grid inside the visible rect, clear of the status bar and the bottom edge.

@@ -67,6 +67,12 @@ jobs:
           xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -border
           sleep 4
           xcrun simctl io "$SIM" screenshot screenshots/border.png
+          # -screenshot-away fast-forwards a fixed world 3 h and shows the "mientras no estabas" sheet.
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot-away
+          sleep 8
+          xcrun simctl io "$SIM" screenshot screenshots/away.png
+          xcrun simctl spawn "$SIM" log show --last 2m --style compact --predicate 'subsystem == "com.santilega.bichitos"' || true
 
       - name: Screenshot of the editor
         # -screenshot-editor opens the editor sheet over the same staged world.
