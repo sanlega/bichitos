@@ -52,6 +52,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var noteNodes: [Int: SKNode] = [:]
     /// Tray toggle: a tap on the ground drops food.
     var foodMode = false
+    var foodKind = Food.Kind.fruta
     private var touch: Touch?
     private var finger: UITouch?
     private var grabOffset = Vec.zero
@@ -166,11 +167,10 @@ final class WorldScene: SKScene, ObservableObject {
         Haptics.tap()
     }
 
-    /// Drops food right next to it, to the side so it doesn't land under its body.
+    /// Drops its favourite food right next to it, to the side so it doesn't land under its body.
     func feed(_ id: Int) {
         guard let b = world.bichito(id) else { return }
-        // TODO(#41): drop its favourite food once foods have kinds (PR #54); for now, the default food.
-        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0))
+        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0), kind: b.favorite)
         Haptics.tap()
     }
 
@@ -247,8 +247,8 @@ final class WorldScene: SKScene, ObservableObject {
             bichitoNodes[id] = nil
         }
         sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
-        sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: makeEgg)
-        sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: makeNote)
+        sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
+        sync(&noteNodes, world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
     /// Each district is a tinted patch of ground with its name near the top.
@@ -279,7 +279,7 @@ final class WorldScene: SKScene, ObservableObject {
     }
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
-    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: () -> SKNode) {
+    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode) {
         var alive = Set<Int>()
         for (id, pos) in items {
             alive.insert(id)
@@ -287,7 +287,7 @@ final class WorldScene: SKScene, ObservableObject {
             if let n = nodes[id] {
                 node = n
             } else {
-                node = make()
+                node = make(id)
                 nodes[id] = node
                 addChild(node)
             }
@@ -310,10 +310,11 @@ final class WorldScene: SKScene, ObservableObject {
     /// Lower on screen = closer = drawn on top.
     private func depth(_ p: CGPoint) -> CGFloat { 1000 - p.y / 10 }
 
-    private func makeFood() -> SKNode {
-        let n = SKShapeNode(circleOfRadius: 3 * pixel)
-        n.fillColor = Ink.accent
-        n.strokeColor = Ink.ink.withAlphaComponent(0.2)
+    private func makeFood(_ id: Int) -> SKNode {
+        let t = Sprites.shared.texture(world.foods.first { $0.id == id }?.kind ?? .fruta)
+        let n = SKSpriteNode(texture: t, size: CGSize(width: t.size().width * pixel, height: t.size().height * pixel))
+        // Centred on its world point, 6 whole pixels up from the shadow row, so it never straddles device pixels.
+        n.anchorPoint = CGPoint(x: 0.5, y: 6 / t.size().height)
         return n
     }
 
@@ -380,7 +381,7 @@ extension WorldScene {
         switch g.tapAction {
         case let .peek(id): onPeek?(id); Haptics.tap()
         case .close: onPeek?(nil)
-        case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
+        case .feed: world.dropFood(at: worldPoint(t.location(in: view)), kind: foodKind); Haptics.tap()
         default: break
         }
         if g.isDrag, let id = g.target {
