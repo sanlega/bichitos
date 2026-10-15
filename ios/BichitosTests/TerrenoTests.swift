@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Bichitos
 
 final class TerrenoTests: XCTestCase {
@@ -224,6 +225,17 @@ final class TerrenoTests: XCTestCase {
                 }
             }
             for (a, b) in zip(frames, frames.dropFirst()) { XCTAssertEqual(a.w, b.w) }
+        }
+    }
+
+    /// Writes every district's painted ground (seed 7, all open) to `GALLERY_DIR`, to review water and rock by eye.
+    func testWriteGround() throws {
+        guard let dir = ProcessInfo.processInfo.environment["GALLERY_DIR"], !dir.isEmpty else { throw XCTSkip("GALLERY_DIR not set") }
+        let t = Terrain(seed: 7)
+        for d in District.themes.indices {
+            let texture = Ground.paint(Ground.Key(seed: 7, district: d, open: [0, d], texel: Ground.texel(.district)), t)
+            let png = try XCTUnwrap(UIImage(cgImage: texture.cgImage()).pngData())
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("ground-\(d).png"))
         }
     }
 }

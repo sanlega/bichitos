@@ -90,9 +90,14 @@ enum Ground {
             g.setFillColor(color(District.themes[key.district].tint, 0.08).cgColor)
             g.fill(box)
             g.restoreGState()
-            let roads = CGMutablePath()
-            for (k, p) in t.paths.enumerated() where key.open.contains(k + 1) && p.count > 1 {
-                roads.addLines(between: p.map { CGPoint(x: $0.x, y: $0.y) })
+            let roads = CGMutablePath(), plaza = World.layout(seed: key.seed)[0], r = Terrain.pathWidth / 2
+            for (k, p) in t.paths.enumerated() where p.count == 2 {
+                var end = p[1]
+                if !key.open.contains(k + 1) { // locked: the star still crosses Plaza Mayor, its round end at the edge
+                    let d = p[1] - p[0]
+                    end = p[0] + d * min(abs(d.x) > 0 ? (plaza.w / 2 - r) / abs(d.x) : 1, abs(d.y) > 0 ? (plaza.h / 2 - r) / abs(d.y) : 1, 1)
+                }
+                roads.addLines(between: [CGPoint(x: p[0].x, y: p[0].y), CGPoint(x: end.x, y: end.y)])
             }
             g.addPath(roads)
             g.setLineWidth(CGFloat(Terrain.pathWidth))
