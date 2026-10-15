@@ -57,6 +57,9 @@ final class WorldScene: SKScene, ObservableObject {
     private var noteNodes: [Int: SKNode] = [:]
     /// Mapa level: a dot per bichito, and the district blobs, paths and locked outlines (`drawMap`).
     private var dotNodes: [Int: SKNode] = [:]
+    private var labels = LabelLayout()
+    private var named: [BichitoNode] = [], names: [CGRect] = []
+    private var talkers: [BichitoNode] = [], bubbles: [CGRect] = [], shown: [Bool] = []
     private let mapLayer = SKNode()
     private var mapKey = ""
     /// Tray toggle: a tap on the ground drops food.
@@ -299,12 +302,35 @@ final class WorldScene: SKScene, ObservableObject {
             node.removeFromParent()
             bichitoNodes[id] = nil
         }
+        placeLabels()
         // The Mapa level shows only districts and dots: food, eggs and notes would be specks.
         let onMap = level == .map
         sync(&dotNodes, onMap ? world.bichitos.map { ($0.id, $0.pos) } : [], make: makeDot)
         sync(&foodNodes, onMap ? [] : world.foods.map { ($0.id, $0.pos) }, make: makeFood)
         sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
         sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
+    }
+
+    /// #77: names and phrase bubbles on screen never touch (`LabelLayout`). Buffers are kept between frames.
+    private func placeLabels() {
+        let bounds = CGRect(origin: .zero, size: size), mid = CGPoint(x: size.width / 2, y: size.height / 2)
+        named.removeAll(keepingCapacity: true)
+        names.removeAll(keepingCapacity: true)
+        talkers.removeAll(keepingCapacity: true)
+        bubbles.removeAll(keepingCapacity: true)
+        for b in world.bichitos { // the world's order is stable, so names don't swap places from frame to frame
+            guard let node = bichitoNodes[b.id] else { continue }
+            node.bubbleBlocked = false
+            if let r = node.nameFrame, r.intersects(bounds) { named.append(node); names.append(r) }
+            if let r = node.bubbleFrame, r.intersects(bounds) { talkers.append(node) }
+        }
+        // Ties (everybody starting at once) go to the one nearer the middle of the screen.
+        func away(_ n: BichitoNode) -> CGFloat { hypot(n.position.x - mid.x, n.position.y - mid.y) }
+        talkers.sort { $0.bubbleRank != $1.bubbleRank ? $0.bubbleRank > $1.bubbleRank : away($0) < away($1) }
+        for n in talkers { bubbles.append(n.bubbleFrame ?? .null) }
+        labels.place(names: &names, bubbles: bubbles, shown: &shown)
+        for (n, ok) in zip(talkers, shown) { n.bubbleBlocked = !ok }
+        for (n, r) in zip(named, names) { n.placeName(r) }
     }
 
     /// Each district is a tinted patch of ground with its name near the top.
@@ -594,7 +620,19 @@ final class BichitoNode: SKNode {
     }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
     static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
-    private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
+    /// A phrase. While its bubble has no room it waits, silent and with the clock stopped, up to `patience`;
+    /// then it is heard and revealed in step with the babble.
+    private struct Talk {
+        let text: String, times: [Double], id: Int
+        var clock = 0.0, shown = -1, waited = 0.0
+        var started = false, visible = false
+    }
+    private var talk: Talk?
+    private static let patience = alwaysTalk ? 600.0 : 3
+    /// Set every frame by the scene's `LabelLayout`: another bubble is in the way.
+    var bubbleBlocked = false
+    /// Where the name sits when nothing is in its way.
+    private var nameAnchor = CGPoint.zero
     private var bubbleSize = CGSize(width: 30, height: 24)
     private static let bubbleMaxWidth: CGFloat = 120
     private static let bubbleFont: UIFont = {
@@ -642,7 +680,8 @@ final class BichitoNode: SKNode {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
         let at = Look.anchors(rest, pixel: Double(pixel))
-        label.position = CGPoint(x: 0, y: at.name)
+        nameAnchor = CGPoint(x: 0, y: at.name)
+        label.position = nameAnchor
         bubble.position = CGPoint(x: 0, y: at.bubble)
         icon.position = bubble.position
         shapeBubble()
@@ -724,15 +763,27 @@ final class BichitoNode: SKNode {
         }
         if b.name != shownName { show(name: b.name) }
         let state = Look.bubble(mood: b.mood, needs: b.needs, dizzy: b.dizzy, moving: moving)
+        if var t = talk, !t.started, bubbleBlocked { // waits for room, showing the icon meanwhile
+            t.waited += dt
+            talk = t.waited < BichitoNode.patience ? t : nil
+            if talk != nil { return }
+        }
         if var t = talk {
+            if !t.started {
+                t.started = true
+                Speaker.shared.say(t.text, voice: recipe.voice, id: t.id)
+            }
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
-                // Below Calle the phrase is still heard, but the bubble keeps the state icon.
-                if shown != t.shown {
-                    if level.showsWords { showBubble(t.text, revealed: shown) } else { show(icon: state) }
+                // Below Calle the phrase is still heard, but the bubble keeps the state icon; so it does
+                // while another bubble is in the way.
+                let visible = level.showsWords && !bubbleBlocked
+                if shown != t.shown || visible != t.visible {
+                    if visible { showBubble(t.text, revealed: shown) } else { show(icon: state) }
                 }
                 t.shown = shown
+                t.visible = visible
                 talk = t
                 return
             }
@@ -742,20 +793,45 @@ final class BichitoNode: SKNode {
         }
         if state != shownIcon {
             shownIcon = state
-            if state == nil || !startTalking(b) { show(icon: state) }
+            show(icon: state)
+            if state != nil { startTalking(b) }
         }
     }
 
     /// Voice (#14): now and then, only on screen, a phrase replaces the icon and appears in step with the babble.
-    private func startTalking(_ b: Bichito) -> Bool {
+    private func startTalking(_ b: Bichito) {
         guard BichitoNode.alwaysTalk || Double.random(in: 0..<1) < 0.35,
-              let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return false }
+              let scene, CGRect(origin: .zero, size: scene.size).contains(position) else { return }
         let line = Phrases.say(mood: b.mood, needs: b.needs, dizzy: b.dizzy, personality: recipe.personality,
                                seed: .random(in: 0...UInt64.max), language: language)
-        let voice = recipe.voice
-        talk = (line, Babble.timeline(line, voice: voice), 0, -1)
-        Speaker.shared.say(line, voice: voice, id: b.id)
-        return true
+        talk = Talk(text: line, times: Babble.timeline(line, voice: recipe.voice), id: b.id)
+        write(line, revealed: 0) // sized now, so the layout knows its room before it shows
+        bubbleBlocked = true // until the scene's layout has looked
+    }
+
+    // MARK: - Label layout (#77)
+
+    /// The whole bubble with its tail, in scene points, while there is a phrase for it at this level.
+    var bubbleFrame: CGRect? {
+        guard talk != nil, level.showsWords, !isHidden else { return nil }
+        return CGRect(x: position.x - bubbleSize.width / 2, y: position.y + bubble.position.y,
+                      width: bubbleSize.width, height: bubbleSize.height + 6)
+    }
+
+    /// Who keeps the bubble when two touch: one already talking (the longest first), else the one waiting longest.
+    var bubbleRank: Double { talk.map { $0.started ? 1e6 + $0.clock : $0.waited } ?? -1 }
+
+    /// The name where it sits with nothing in its way, in scene points; nil when names don't show.
+    var nameFrame: CGRect? {
+        guard level.showsWords, !isHidden else { return nil }
+        let s = label.size
+        return CGRect(x: position.x + nameAnchor.x - s.width / 2, y: position.y + nameAnchor.y - s.height, width: s.width, height: s.height)
+    }
+
+    /// Moves the name to `r` from `LabelLayout`, or hides it for `.null`.
+    func placeName(_ r: CGRect) {
+        label.isHidden = r.isNull
+        if !r.isNull { label.position = CGPoint(x: r.midX - position.x, y: r.maxY - position.y) }
     }
 
     private func show(icon state: Look.Icon?) {
@@ -764,10 +840,14 @@ final class BichitoNode: SKNode {
         if let state { icon.texture = Sprites.shared.texture(state, accent: Palette.of(recipe).colors[5]) }
     }
 
-    /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
-    private func showBubble(_ text: String, revealed: Int = .max) {
+    private func showBubble(_ text: String, revealed: Int) {
         icon.isHidden = true
         bubble.isHidden = !level.showsIcons
+        write(text, revealed: revealed)
+    }
+
+    /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
+    private func write(_ text: String, revealed: Int) {
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()
         style.alignment = .center
