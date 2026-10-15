@@ -313,7 +313,10 @@ final class BichitoNode: SKNode {
         bubbleText.attributedText = s
         let box = s.boundingRect(with: CGSize(width: BichitoNode.bubbleMaxWidth, height: 200),
                                  options: .usesLineFragmentOrigin, context: nil)
-        let size = CGSize(width: max(30, ceil(box.width) + 16), height: max(24, ceil(box.height) + 10))
+        // SKLabelNode wraps a little differently from boundingRect: take whichever is bigger.
+        let label = bubbleText.frame.size
+        let size = CGSize(width: max(30, ceil(max(box.width, label.width)) + 16),
+                          height: max(24, ceil(max(box.height, label.height)) + 10))
         if size != bubbleSize {
             bubbleSize = size
             shapeBubble()
