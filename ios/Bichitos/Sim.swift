@@ -46,19 +46,35 @@ enum WorldEvent: Codable, Equatable {
 }
 
 /// Buckets points in square cells; neighbours closer than one cell are always in the 3×3 block around a point.
+/// The points sorted by cell key, one sort per pass (n log n, no per-cell storage): a column of the 3×3 block is one
+/// run of consecutive keys, found by binary search, so queries allocate nothing.
 struct SpatialHash {
     private let cell: Double
-    private var cells: [Int: [Int]] = [:]
+    private var keys: [Int] = []  // sorted cell keys, one per point
+    private var order: [Int] = [] // the point behind each key: by cell, then by index
 
     init(cell: Double, points: [Vec]) {
         self.cell = cell
-        for (i, p) in points.enumerated() { cells[key(p, 0, 0), default: []].append(i) }
+        let k = points.map { key($0, 0, 0) }
+        order = points.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }
+        keys = order.map { k[$0] }
     }
 
-    func near(_ p: Vec) -> [Int] {
-        var out: [Int] = []
-        for dx in -1...1 { for dy in -1...1 { out += cells[key(p, dx, dy)] ?? [] } }
-        return out
+    /// Visits the points in the 3×3 block around `p` column by column (x−1, x, x+1), each column by row and each cell
+    /// in index order, until `stop` returns true. Callers depend on this order: it is what keeps the world deterministic.
+    func forEach(near p: Vec, _ stop: (Int) -> Bool) {
+        for dx in -1...1 {
+            let first = key(p, dx, -1), last = key(p, dx, 1)
+            var lo = 0, hi = keys.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if keys[mid] < first { lo = mid + 1 } else { hi = mid }
+            }
+            while lo < keys.count && keys[lo] <= last {
+                if stop(order[lo]) { return }
+                lo += 1
+            }
+        }
     }
 
     private func key(_ p: Vec, _ dx: Int, _ dy: Int) -> Int {
@@ -236,10 +252,21 @@ struct World: Codable, Equatable {
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
-        for i in bichitos.indices {
-            let visible = watched && isVisible(bichitos[i].pos)
-            if !visible && (tickCount + i) % World.lod != 0 { continue }
-            update(i, visible ? World.dt : World.dt * Double(World.lod))
+        let walls = bounds // once per tick, not per body: districts only unlock after the moves
+        if watched {
+            for i in bichitos.indices {
+                let visible = isVisible(bichitos[i].pos)
+                if !visible && (tickCount + i) % World.lod != 0 { continue }
+                update(i, visible ? World.dt : World.dt * Double(World.lod), walls)
+            }
+        } else {
+            // Only every lod-th bichito is due: jump straight to them instead of skipping the rest one by one.
+            let lod = World.lod, h = World.dt * Double(World.lod)
+            var i = (lod - tickCount % lod) % lod
+            while i < bichitos.count {
+                update(i, h, walls)
+                i += lod
+            }
         }
         if watched { collide() }
         if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters() }
@@ -276,7 +303,7 @@ struct World: Codable, Equatable {
 
     // MARK: - Brain and body
 
-    private mutating func update(_ i: Int, _ h: Double) {
+    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect) {
         var b = bichitos[i]
         guard b.mood != .held else { return }
         let r = b.recipe
@@ -345,7 +372,7 @@ struct World: Codable, Equatable {
             b.vel = b.vel + (dir * (r.speed * pace) - b.vel) * min(1, 6 * h)
         }
         b.pos = b.pos + b.vel * h
-        bounce(&b)
+        bounce(&b, walls)
         if b.timer <= 0 { decide(&b) }
         bichitos[i] = b
     }
@@ -367,9 +394,8 @@ struct World: Codable, Equatable {
         b.enter(.happy, for: 2)
     }
 
-    private func bounce(_ b: inout Bichito) {
+    private func bounce(_ b: inout Bichito, _ s: Rect) {
         let r = b.recipe.radius
-        let s = bounds
         let x0 = s.x + r, x1 = s.x + s.w - r, y0 = s.y + r, y1 = s.y + s.h - r
         if b.pos.x < x0 { b.pos.x = x0; b.vel.x = abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
         if b.pos.x > x1 { b.pos.x = x1; b.vel.x = -abs(b.vel.x) * 0.6; b.heading = .pi - b.heading }
@@ -388,12 +414,13 @@ struct World: Codable, Equatable {
         guard ids.count > 1 else { return }
         let grid = SpatialHash(cell: 64, points: ids.map { bichitos[$0].pos })
         for (a, i) in ids.enumerated() {
-            for k in grid.near(bichitos[i].pos) where k > a {
+            grid.forEach(near: bichitos[i].pos) { k in
+                guard k > a else { return false }
                 let j = ids[k]
                 let d = bichitos[j].pos - bichitos[i].pos
                 let len = d.length
                 let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius
-                guard len < reach else { continue }
+                guard len < reach else { return false }
                 let n = len > 1e-6 ? d * (1 / len) : Vec(1, 0)
                 let push = n * ((reach - len) / 2)
                 let p1 = clamp(bichitos[i].pos - push, bichitos[i].recipe.radius)
@@ -407,6 +434,7 @@ struct World: Codable, Equatable {
                     bichitos[i].dizzy = 0.3
                     bichitos[j].dizzy = 0.3
                 }
+                return false
             }
         }
     }
@@ -417,18 +445,22 @@ struct World: Codable, Equatable {
 
     // MARK: - Social life
 
-    private func isOpen(_ b: Bichito) -> Bool { b.mood.isFree && b.calm <= 0 }
-
     private mutating func encounters() {
-        let grid = SpatialHash(cell: 64, points: bichitos.map { $0.pos })
-        for i in bichitos.indices where isOpen(bichitos[i]) {
-            for j in grid.near(bichitos[i].pos) where j != i && isOpen(bichitos[j]) {
+        // Only the open (free and calm) can meet, and meeting never opens anyone, so the rest stay out of the grid.
+        let open = bichitos.indices.filter { bichitos[$0].mood.isFree && bichitos[$0].calm <= 0 }
+        guard open.count > 1 else { return }
+        let grid = SpatialHash(cell: 64, points: open.map { bichitos[$0].pos })
+        for i in open where bichitos[i].mood.isFree && bichitos[i].calm <= 0 {
+            var met = -1
+            grid.forEach(near: bichitos[i].pos) { k in
+                let j = open[k]
+                guard j != i, bichitos[j].mood.isFree, bichitos[j].calm <= 0 else { return false }
                 let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius + 24
-                if (bichitos[j].pos - bichitos[i].pos).length < reach {
-                    meet(i, j)
-                    break
-                }
+                guard (bichitos[j].pos - bichitos[i].pos).length < reach else { return false }
+                met = j
+                return true
             }
+            if met >= 0 { meet(i, met) }
         }
     }
 
