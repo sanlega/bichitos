@@ -72,10 +72,27 @@ Code: `Recipe.swift`, `Generator.swift`, `Sprites.swift` (caché + `SKTexture` c
 
 - Un **mapa continuo** con paneo y zoom (pellizco). Los bichitos son pixel art sobre un mundo
   e interfaz modernos (ver DESIGN.md).
-- El mapa tiene **barrios** ("ciudades"): zonas con nombre y ambiente propio. Se desbloquean
-  barrios nuevos según crece la población, para que siempre haya sitio. Los bichitos **emigran**
-  caminando entre barrios según afinidades ("Pocholo se fue a vivir con los territoriales").
-- Comida, objetos sencillos y ningún otro protagonista que los bichitos.
+- El mapa tiene **7 barrios** ("ciudades", tabla en DESIGN.md): Plaza Mayor en el centro, que
+  no es afín a nadie, y 6 barrios temáticos en anillo a su alrededor, unidos por caminos en estrella.
+  Cada uno es afín a una personalidad. La disposición sale de la semilla del mundo.
+- Caben **14 bichitos por barrio** (98 en total). Al llenarse, se desbloquea el barrio temático
+  **más afín a la población actual** ("Tus territoriales necesitaban esquinas").
+- Los bichitos **emigran** caminando hacia el barrio afín a su personalidad y hacia sus amigos
+  ("Pocholo se fue a vivir a Las Esquinas").
+- Cada barrio trae sus **edificaciones** a escala de bichito (ver DESIGN.md). En la primera versión
+  solo tres cambian el comportamiento, y lo hacen de forma mínima:
+  - **Casita**: cada bichito tiene la suya, asignada al nacer o al mudarse, y caben 2. Hay 7 casitas
+    por barrio. Va a dormir a su casita; quien no tiene casita duerme bajo un árbol.
+  - **Nido**: los huevos se ponen e incuban en el nido.
+  - **Banco**: los enamorados van al banco.
+  - El agua y las rocas bloquean el paso, con un desvío simple, no un buscador de rutas.
+  - Fuera de la primera versión: que prefieran caminar por los caminos y que se reúnan alrededor
+    del monumento, que de momento es decorativo.
+- **Día y noche** con el reloj real (fases en DESIGN.md). De noche suben las ganas de dormir y
+  van a sus casitas, cuyas ventanas se encienden. El avance rápido usa la hora real de cada momento.
+- **5 comidas** en pixel art: fruta, galleta, seta, croqueta y macarrón. Cada bichito tiene una
+  **favorita**, que sale de su receta y que las crías heredan: llena más y además da cariño.
+- Ningún otro protagonista que los bichitos.
 
 ## Comportamiento
 
@@ -95,19 +112,30 @@ huir, imitar, asustarse, contento, cogido, incubando.
 
 | Gesto | Qué pasa |
 |---|---|
-| Tocar | Acariciar: se aplasta de gusto (o se queja si dormía) |
+| Tocar | Abre `BichitoPeek`: Acariciar, Dar de comer (deja su favorita al lado), Seguir (la cámara lo sigue) y Ficha |
+| Frotar encima | Acariciar: se aplasta de gusto (o se queja si dormía) |
 | Arrastrar y soltar | Cogerlo y lanzarlo: rebota en el suelo y se marea |
-| Tocar el suelo en modo comida | Cae comida; los hambrientos corren a por ella |
+| Modo comida + tocar el suelo | Cae la comida elegida en `FoodPicker`; los hambrientos corren a por ella |
 | Agitar el móvil | Susto general |
 | Mantener pulsado | Ficha: nombre, descripción, personalidad, necesidades, parientes, amigos y rivales |
 
-Todas las acciones existen también como botones (accesibilidad).
+Todas las acciones existen también como botones (accesibilidad). Lanzar no tiene botón: VoiceOver
+ofrece la acción "Lanzar", que lo tira en una dirección al azar.
+
+Un bichito nuevo creado en el editor cae en el centro de lo que se está mirando. Si la vista está en
+el nivel Mapa, la cámara viaja antes a Plaza Mayor.
 
 ## Necesidades y escapadas
 
 Hambre, sueño y cariño bajan con el reloj real. Un bichito muy descuidado **se escapa**: deja una
 nota de despedida absurda ("Me voy a buscar una esquina que me quiera. — Pocholo") y desaparece
-del mapa. Se recupera dejando su comida favorita junto a la nota. Nadie muere.
+del mapa. Solo se recupera dejando **su comida favorita** junto a la nota. Nadie muere.
+
+## Noticias
+
+Las **20 noticias** más recientes del terrario se guardan con su fecha, aparte del registro que usa
+el resumen de "mientras no estabas". Las repetidas se agrupan: "Chencho y Ramona se pelearon
+14 veces" cuenta como una sola.
 
 ## Mientras no estás
 
