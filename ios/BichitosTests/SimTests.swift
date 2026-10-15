@@ -30,7 +30,7 @@ final class SimTests: XCTestCase {
 
     func testBodiesStayInsideTheMap() {
         var w = world(seed: 5, count: 30)
-        XCTAssertGreaterThanOrEqual(w.districts.count, 3) // 12 per district
+        XCTAssertGreaterThanOrEqual(w.districts.count, 3) // 14 per district
         w.visibleRect = Rect(x: 0, y: 0, w: w.size.x, h: w.size.y)
         for (k, b) in w.bichitos.enumerated() where k % 3 == 0 {
             w.grab(b.id)
