@@ -53,7 +53,10 @@ struct Camera: Equatable {
     }
 
     /// The finger moved by `d` points: the map follows it.
-    mutating func pan(by d: Vec) { center = center - d * (1 / unit) }
+    mutating func pan(by d: Vec) {
+        trip = nil
+        center = center - d * (1 / unit)
+    }
 
     /// Zooms to `scale` (clamped to `scales`), keeping the map point under `focus` where it is.
     mutating func zoom(to scale: Double, around focus: Vec, _ screen: Vec) {
@@ -71,8 +74,34 @@ struct Camera: Equatable {
         snap = Spring(x: scale - snapTo, v: 0, stiffness: pow(2 * .pi / response, 2), damping: 4 * .pi * damping / response)
     }
 
-    /// A new pinch takes over from the spring.
-    mutating func grab() { snap = nil }
+    /// A new pinch takes over from the spring (and from a trip).
+    mutating func grab() { snap = nil; trip = nil }
+
+    /// While the camera travels to a district: the spring (1 at the start, 0 on arrival) and both ends.
+    private(set) var trip: Spring?
+    private var tripFrom = Vec.zero, tripTo = Vec.zero
+
+    /// From now on `glide` springs the centre to `p` with `response 0.5, damping 0.85`.
+    mutating func travel(to p: Vec) {
+        let response = 0.5, damping = 0.85
+        tripFrom = center
+        tripTo = p
+        trip = Spring(x: 1, v: 0, stiffness: pow(2 * .pi / response, 2), damping: 4 * .pi * damping / response)
+    }
+
+    /// Advances the trip by `dt` seconds; at rest it lands exactly on the target and stops.
+    mutating func glide(dt: Double) {
+        guard var s = trip else { return }
+        let step = 1.0 / 240
+        var left = dt
+        while left > 0 {
+            s.step(min(left, step))
+            left -= step
+        }
+        let done = abs(s.x) < 1e-3 && abs(s.v) < 1e-2
+        trip = done ? nil : s
+        center = tripTo + (tripFrom - tripTo) * (done ? 0 : s.x)
+    }
 
     /// Advances the snap by `dt` seconds; at rest it lands exactly on the level and stops.
     mutating func settle(dt: Double, _ screen: Vec) {

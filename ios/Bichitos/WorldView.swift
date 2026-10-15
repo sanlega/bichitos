@@ -10,6 +10,7 @@ struct WorldView: View {
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
     @State private var peek: Int? // id of the bichito whose peek is up
+    @State private var picking = false // BarrioPicker is open
 
     var body: some View {
         ZStack {
@@ -18,11 +19,8 @@ struct WorldView: View {
                 .sheet(isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } })) {
                     if let card { BichitoCard(scene: scene, id: card) }
                 }
-            VStack(spacing: 8) {
-                Text(scene.title)
-                    .font(.system(size: 22, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.ink)
-                    .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 8) {
+                BarrioPill(scene: scene) { picking = true }
                 if let event = scene.toast {
                     Button { scene.onToastTap?(event) } label: {
                         Text(scene.world.toastText(event))
@@ -38,8 +36,11 @@ struct WorldView: View {
                 }
                 Spacer()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
             .padding(.top, 8)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
+            .sheet(isPresented: $picking) { BarrioPicker(scene: scene) { picking = false } }
             if foodMode {
                 // Food mode marks the screen edge (DESIGN.md "Modos").
                 Rectangle().strokeBorder(Color.accent, lineWidth: 3)
@@ -77,6 +78,9 @@ struct WorldView: View {
             scene.onLongPress = { card = $0 }
             scene.onPeek = { peek = $0 }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
+            if CommandLine.arguments.contains("-screenshot-barrios") { // after the staged world is populated
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true }
+            }
             if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
             if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { peek = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }

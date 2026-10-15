@@ -126,6 +126,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/peek.png
 
+      - name: Screenshot of the district picker
+        # -screenshot-barrios opens BarrioPicker over the two-district world (-border): 2 open, 5 locked.
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -border -screenshot-barrios
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/barrios.png
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4

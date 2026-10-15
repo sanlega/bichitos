@@ -122,4 +122,30 @@ extension World {
             }
         }
     }
+
+    /// One `BarrioPicker` row per district theme. `place` is its position in `districts`, nil while locked.
+    /// Open: `population` lives there. Locked: `fans` have its personality (what decides which one opens next).
+    struct BarrioRow: Equatable {
+        let theme: Int
+        let place: Int?
+        let population: Int
+        let fans: Int
+    }
+
+    var barrioRows: [BarrioRow] {
+        District.themes.indices.map { t in
+            let place = districts.firstIndex { $0.index == t }
+            let affine = District.themes[t].affine
+            return BarrioRow(theme: t, place: place, population: place.map(population(of:)) ?? 0,
+                             fans: place != nil || affine == nil ? 0 : bichitos.filter { $0.recipe.personality == affine }.count)
+        }
+    }
+
+    /// How many more bichitos open the next district (`unlockIfCrowded`), nil once all are open.
+    var bichitosToNextDistrict: Int? {
+        districts.count < District.themes.count ? max(1, World.capacity * districts.count + 1 - bichitos.count) : nil
+    }
+
+    /// Bichitos whose home is `district` (whether or not they are walking there right now).
+    func population(of district: Int) -> Int { bichitos.filter { $0.district == district }.count }
 }

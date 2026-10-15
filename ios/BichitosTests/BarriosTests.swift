@@ -184,4 +184,52 @@ final class BarriosTests: XCTestCase {
         XCTAssertTrue(w.bichitos.allSatisfy { $0.district < 2 })
         XCTAssertEqual(w.districts.count, 2)
     }
+
+    /// BarrioPicker: every district, open ones with their population, locked ones with how many bichitos they still need.
+    func testPickerRows() {
+        var w = World(seed: 3, date: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(w.barrioRows.map(\.place), [0, nil, nil, nil, nil, nil, nil])
+        XCTAssertEqual(w.bichitosToNextDistrict, 15)
+        var rng = SeededRNG(seed: 3)
+        for _ in 0..<20 { w.add(Recipe.random(using: &rng)) }
+        let rows = w.barrioRows
+        XCTAssertEqual(rows.map(\.theme), Array(0..<7))
+        XCTAssertEqual(rows.compactMap(\.place).sorted(), [0, 1])
+        XCTAssertEqual(rows.compactMap(\.place).map { w.districts[$0].index }, rows.filter { $0.place != nil }.map(\.theme))
+        XCTAssertEqual(rows.map(\.population).reduce(0, +), 20)
+        XCTAssertEqual(rows[0].population, w.bichitos.filter { $0.district == 0 }.count)
+        for r in rows where r.place == nil {
+            XCTAssertEqual(r.population, 0)
+            XCTAssertEqual(r.fans, w.bichitos.filter { $0.recipe.personality == District.themes[r.theme].affine }.count)
+        }
+        // One number for the whole map, since which district opens depends on who lives here.
+        XCTAssertEqual(w.bichitosToNextDistrict, 9)
+        for _ in 0..<8 { w.add(Recipe.random(using: &rng)) }
+        XCTAssertEqual(w.districts.count, 2)
+        XCTAssertEqual(w.bichitosToNextDistrict, 1)
+        w.add(Recipe.random(using: &rng))
+        XCTAssertEqual(w.districts.count, 3, "the count shown is exactly what opens it")
+        XCTAssertEqual(w.bichitosToNextDistrict, 14)
+
+        for _ in 0..<80 { w.add(Recipe.random(using: &rng)) }
+        XCTAssertNil(w.bichitosToNextDistrict, "all seven open")
+        XCTAssertTrue(w.barrioRows.allSatisfy { $0.place != nil && $0.fans == 0 })
+    }
+
+    /// Tapping a district: the camera springs there, lands exactly on it and a pan takes over.
+    func testCameraTravelsToADistrict() {
+        var c = Camera(center: Vec(500, 800), scale: 3)
+        let to = Vec(1500, 800)
+        c.travel(to: to)
+        c.glide(dt: 0.1)
+        XCTAssertGreaterThan(c.center.x, 500)
+        XCTAssertLessThan(c.center.x, to.x + 50, "damping 0.85 barely overshoots")
+        for _ in 0..<120 { c.glide(dt: 1.0 / 60) }
+        XCTAssertNil(c.trip)
+        XCTAssertEqual(c.center, to)
+
+        c.travel(to: Vec(0, 0))
+        c.pan(by: Vec(1, 0))
+        XCTAssertNil(c.trip)
+    }
 }
