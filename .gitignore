@@ -3,3 +3,5 @@ ios/*.xcodeproj
 ios/Bichitos/Info.plist
 ios/build/
 ios/gallery/
+ios/screenshots/
+.claude/worktrees/

@@ -51,6 +51,18 @@ jobs:
           grep -E "error:|warning: .*Bichitos|Test Case .* (passed|failed)|XCTAssert|\*\* (TEST|BUILD)" build.log | sort -u | head -300
           exit $status
 
+      - name: Screenshot of the world
+        # The app launched with -screenshot starts a fixed, staged world; capture it after a few seconds of life.
+        run: |
+          xcrun simctl boot "$SIM" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM" -b
+          xcrun simctl status_bar "$SIM" override --time 9:41 --batteryLevel 100 --batteryState charged || true
+          xcrun simctl install "$SIM" build/Build/Products/Debug-iphonesimulator/Bichitos.app
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot
+          sleep 6
+          mkdir -p screenshots
+          xcrun simctl io "$SIM" screenshot screenshots/world.png
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -64,4 +76,12 @@ jobs:
         with:
           name: gallery
           path: ios/gallery
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/screenshots
           if-no-files-found: ignore
