@@ -6,10 +6,14 @@ import XCTest
 final class ThemeTests: XCTestCase {
     /// sRGB components of `top` laid over the opaque `base`.
     private func over(_ top: Color, _ base: Color) -> [CGFloat] {
-        var t: [CGFloat] = [0, 0, 0, 0], b: [CGFloat] = [0, 0, 0, 0]
-        UIColor(top).getRed(&t[0], green: &t[1], blue: &t[2], alpha: &t[3])
-        UIColor(base).getRed(&b[0], green: &b[1], blue: &b[2], alpha: &b[3])
+        let t = rgba(top), b = rgba(base)
         return (0..<3).map { t[$0] * t[3] + b[$0] * (1 - t[3]) }
+    }
+
+    private func rgba(_ c: Color) -> [CGFloat] {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return [r, g, b, a]
     }
 
     private func luminance(_ rgb: [CGFloat]) -> CGFloat {
