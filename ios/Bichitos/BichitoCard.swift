@@ -18,7 +18,7 @@ struct BichitoCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color.white)
+        .background(Color.card)
         .foregroundStyle(Color.ink)
         .presentationCornerRadius(28)
         .presentationDragIndicator(.visible)
@@ -47,16 +47,14 @@ struct BichitoCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Gene.personality.label(b.recipe.choice(.personality)).capitalized)
                         .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(Color.card)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 32)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.ink))
                         .accessibilityLabel("Personalidad: \(Gene.personality.label(b.recipe.choice(.personality)))")
                 }
                 section("Necesidades") {
-                    NeedBar(name: "Comida", value: b.needs.hunger)
-                    NeedBar(name: "Descanso", value: b.needs.sleep)
-                    NeedBar(name: "Cariño", value: b.needs.affection)
+                    ForEach(Need.allCases, id: \.self) { NeedBar($0, value: $0.value(b.needs)) }
                 }
                 section("Amigos") { people(scene.world.friends(of: id), none: "Todavía no tiene amigos.") }
                 section("Rivales") { people(scene.world.rivals(of: id), none: "Se lleva bien con todos.") }
@@ -110,36 +108,4 @@ struct BichitoCard: View {
     }
 
     private func rename() { scene.rename(id, to: name) }
-}
-
-/// One need as a bar with its number (DESIGN.md "Accesibilidad": never only the sprite's look).
-struct NeedBar: View {
-    let name: String
-    let value: Double
-
-    private var percent: Int { Int((min(max(value, 0), 1) * 100).rounded()) }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(name)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .frame(width: 84, alignment: .leading)
-            Capsule()
-                .fill(Color.hairline)
-                .frame(height: 10)
-                .overlay(alignment: .leading) {
-                    GeometryReader { g in
-                        Capsule()
-                            .fill(value < 0.3 ? Color.brand : Color.ink)
-                            .frame(width: g.size.width * CGFloat(percent) / 100)
-                    }
-                }
-            Text("\(percent)")
-                .font(.system(.subheadline, design: .rounded, weight: .semibold).monospacedDigit())
-                .frame(width: 36, alignment: .trailing)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(name)
-        .accessibilityValue("\(percent) de 100")
-    }
 }

@@ -9,6 +9,7 @@ struct WorldView: View {
     @State private var foodKind = Food.Kind.fruta
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
+    @State private var peek: Int? // id of the bichito whose peek is up
 
     var body: some View {
         ZStack {
@@ -20,40 +21,50 @@ struct WorldView: View {
             VStack(spacing: 8) {
                 Text(scene.title)
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(Ink.ink))
-                if let news = scene.news {
-                    Text(news)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color(Ink.ink))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(.white).shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4))
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    .foregroundStyle(Color.ink)
+                    .allowsHitTesting(false)
+                if let event = scene.toast {
+                    Button { scene.onToastTap?(event) } label: {
+                        Text(scene.world.toastText(event))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.card).floating())
+                    }
+                    .buttonStyle(.plain)
+                    .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
             }
             .padding(.top, 8)
-            .allowsHitTesting(false)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             if foodMode {
                 // Food mode marks the screen edge (DESIGN.md "Modos").
-                Rectangle().strokeBorder(Color.brand, lineWidth: 3)
+                Rectangle().strokeBorder(Color.accent, lineWidth: 3)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
-            VStack {
+            VStack(spacing: 8) {
                 Spacer()
                 // One mode at a time: in food mode the tray is the picker, and «Hecho» is the only way out.
                 if foodMode {
                     FoodPicker(kind: $foodKind) { foodMode = false }
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 16)
                 } else {
+                    if let id = peek {
+                        BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
+                            .padding(.horizontal, 16)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                     Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 16)
                 }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: peek)
         }
-        .onChange(of: foodMode) { _, on in scene.foodMode = on }
+        .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
         .onChange(of: foodKind) { _, k in scene.foodKind = k }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
         .sheet(isPresented: $creating) {
@@ -64,8 +75,12 @@ struct WorldView: View {
         }
         .onAppear {
             scene.onLongPress = { card = $0 }
+            scene.onPeek = { peek = $0 }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
             if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
+            if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { peek = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
+            }
             if CommandLine.arguments.contains("-screenshot-card") {
                 // After the staged world is populated: the one with friends, rivals and family.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
@@ -74,7 +89,7 @@ struct WorldView: View {
     }
 }
 
-/// Floating bottom tray: white card, radius 20, round icon buttons.
+/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons with the principal one in the centre.
 struct Tray: View {
     @Binding var foodMode: Bool
     var scare: () -> Void
@@ -82,33 +97,19 @@ struct Tray: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            icon("carrot.fill", "Modo comida", fill: foodMode ? Color(Ink.ink) : Color(Ink.ink).opacity(0.06),
-                 tint: foodMode ? .white : Color(Ink.ink)) {
-                foodMode.toggle()
-                Haptics.tap()
-            }
-            .accessibilityAddTraits(foodMode ? .isSelected : [])
-            icon("bolt.fill", "Asustar", fill: Color(Ink.ink).opacity(0.06), tint: Color(Ink.ink), action: scare)
-            icon("plus", "Nuevo bichito", fill: Color(Ink.accent), tint: .white, action: add)
+            Button { foodMode.toggle() } label: { Image(systemName: "carrot.fill") }
+                .buttonStyle(IconButtonStyle(background: foodMode ? Color.accent : Color.fill))
+                .accessibilityLabel("Modo comida")
+                .accessibilityAddTraits(foodMode ? .isSelected : [])
+            Button(action: add) { Image(systemName: "plus") }
+                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
+                .accessibilityLabel("Nuevo bichito")
+            Button(action: scare) { Image(systemName: "bolt.fill") }
+                .buttonStyle(IconButtonStyle())
+                .accessibilityLabel("Asustar")
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.white)
-                .shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4)
-        )
-    }
-
-    private func icon(_ symbol: String, _ label: String, fill: Color, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(fill))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
     }
 }
 

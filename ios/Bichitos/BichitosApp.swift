@@ -7,6 +7,7 @@ struct BichitosApp: App {
             PenView { scene in
                 WorldView(scene: scene)
             }
+            .preferredColorScheme(.light) // the night comes from the world, not the system
         }
     }
 }
@@ -23,9 +24,10 @@ enum Terrarium {
 
     static func screenshot() -> WorldScene {
         WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, v in
-            // Fixed slots: 5 rows, each tall enough for bubble + sprite + name, clear of the status bar and home indicator.
+            // Fixed slots: 4 rows of bichitos, each tall enough for bubble + sprite + name, clear of the status bar,
+            // then a row for the egg and the note, above the tray.
             func at(_ fx: Double, _ row: Int) -> Vec {
-                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.925][row])
+                Vec(v.x + fx * v.w, v.y + v.h * [0.21, 0.385, 0.565, 0.745, 0.83][row])
             }
             var rng = SeededRNG(seed: 7)
             let recipes = (0..<9).map { _ in Recipe.random(using: &rng) }
@@ -56,6 +58,10 @@ enum Terrarium {
             w.bichitos[7].parents = [w.bichitos[2].id, w.bichitos[3].id]
             w.bichitos[6].parents = [w.bichitos[7].id]
             w.eggs.append(Egg(id: 9000, pos: at(0.3, 4), parents: [], recipe: recipes[0], hatchIn: 600))
+            if CommandLine.arguments.contains("-screenshot-toast") { // the love pair's egg, then a birth queued behind it
+                w.record(.eggLaid(w.bichitos[2].id, w.bichitos[3].id))
+                w.record(.hatched(w.bichitos[6].id))
+            }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
         }
@@ -71,7 +77,8 @@ enum Terrarium {
         for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
         let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
         return WorldScene(world: w, focus: Vec(edge, 800)) { w, _ in
-            w.bichitos[leaving].district = 1 // after the scene noted its old home, so the move is announced
+            w.bichitos[leaving].district = 1
+            w.record(.emigrated(w.bichitos[leaving].id, 1)) // so the move gets its toast
         }
     }
 
