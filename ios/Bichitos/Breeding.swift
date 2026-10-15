@@ -30,6 +30,7 @@ extension Recipe {
             default: c.personality = Personality.allCases.randomElement(using: &rng)!
             }
         }
+        c.favoriteFood = inheritFavorite(a, b, using: &rng)
         return c
     }
 
