@@ -39,23 +39,50 @@ enum WorldEvent: Codable, Equatable {
 }
 
 /// Buckets points in square cells; neighbours closer than one cell are always in the 3×3 block around a point.
+/// A dense grid over the points' bounding box, filled by counting sort: one build per pass, queries allocate nothing.
+/// shortcut: the grid spans the points' bounding box, fine for one map; points far apart would need a real hash.
 struct SpatialHash {
     private let cell: Double
-    private var cells: [Int: [Int]] = [:]
+    private var x0 = 0, y0 = 0, cols = 0, rows = 0
+    private var start: [Int] = [] // cell c holds order[start[c]..<start[c + 1]]; c = column * rows + row
+    private var order: [Int] = [] // point indices grouped by cell, ascending within each cell
 
     init(cell: Double, points: [Vec]) {
         self.cell = cell
-        for (i, p) in points.enumerated() { cells[key(p, 0, 0), default: []].append(i) }
+        guard !points.isEmpty else { return }
+        var cx = Array(repeating: 0, count: points.count), cy = cx
+        for k in points.indices {
+            cx[k] = Int((points[k].x / cell).rounded(.down))
+            cy[k] = Int((points[k].y / cell).rounded(.down))
+        }
+        x0 = cx.min()!
+        y0 = cy.min()!
+        cols = cx.max()! - x0 + 1
+        rows = cy.max()! - y0 + 1
+        start = Array(repeating: 0, count: cols * rows + 1)
+        for k in points.indices { start[(cx[k] - x0) * rows + cy[k] - y0 + 1] += 1 }
+        for c in 0..<(cols * rows) { start[c + 1] += start[c] }
+        var next = start
+        order = Array(repeating: 0, count: points.count)
+        for k in points.indices {
+            let c = (cx[k] - x0) * rows + cy[k] - y0
+            order[next[c]] = k
+            next[c] += 1
+        }
     }
 
-    func near(_ p: Vec) -> [Int] {
-        var out: [Int] = []
-        for dx in -1...1 { for dy in -1...1 { out += cells[key(p, dx, dy)] ?? [] } }
-        return out
-    }
-
-    private func key(_ p: Vec, _ dx: Int, _ dy: Int) -> Int {
-        (Int((p.x / cell).rounded(.down)) + dx) * 100_000 + Int((p.y / cell).rounded(.down)) + dy
+    /// Visits the points in the 3×3 block of cells around `p`, column by column (x−1, x, x+1), each column top to
+    /// bottom and each cell in index order, until `stop` returns true. The order is fixed: callers depend on it.
+    func forEach(near p: Vec, _ stop: (Int) -> Bool) {
+        guard cols > 0 else { return }
+        let px = Int((p.x / cell).rounded(.down)) - x0, py = Int((p.y / cell).rounded(.down)) - y0
+        let lo = max(py - 1, 0), hi = min(py + 1, rows - 1)
+        guard lo <= hi else { return }
+        var x = max(px - 1, 0)
+        while x <= min(px + 1, cols - 1) {
+            for s in start[x * rows + lo]..<start[x * rows + hi + 1] where stop(order[s]) { return }
+            x += 1
+        }
     }
 }
 
@@ -238,12 +265,24 @@ struct World: Codable, Equatable {
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
-        for i in bichitos.indices {
-            let visible = watched && isVisible(bichitos[i].pos)
-            if !visible && (tickCount + i) % World.lod != 0 { continue }
-            let u0 = Profile.now()
-            update(i, visible ? World.dt : World.dt * Double(World.lod))
-            Profile.add(1, u0)
+        if watched {
+            for i in bichitos.indices {
+                let visible = isVisible(bichitos[i].pos)
+                if !visible && (tickCount + i) % World.lod != 0 { continue }
+                let u0 = Profile.now()
+                update(i, visible ? World.dt : World.dt * Double(World.lod))
+                Profile.add(1, u0)
+            }
+        } else {
+            // Only every lod-th bichito is due: jump straight to them instead of skipping the rest one by one.
+            let lod = World.lod, h = World.dt * Double(World.lod)
+            var i = (lod - tickCount % lod) % lod
+            while i < bichitos.count {
+                let u0 = Profile.now()
+                update(i, h)
+                Profile.add(1, u0)
+                i += lod
+            }
         }
         let p1 = Profile.now()
         Profile.ns[0] += Int(p1 - p0)
@@ -403,12 +442,13 @@ struct World: Codable, Equatable {
         guard ids.count > 1 else { return }
         let grid = SpatialHash(cell: 64, points: ids.map { bichitos[$0].pos })
         for (a, i) in ids.enumerated() {
-            for k in grid.near(bichitos[i].pos) where k > a {
+            grid.forEach(near: bichitos[i].pos) { k in
+                guard k > a else { return false }
                 let j = ids[k]
                 let d = bichitos[j].pos - bichitos[i].pos
                 let len = d.length
                 let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius
-                guard len < reach else { continue }
+                guard len < reach else { return false }
                 let n = len > 1e-6 ? d * (1 / len) : Vec(1, 0)
                 let push = n * ((reach - len) / 2)
                 let p1 = clamp(bichitos[i].pos - push, bichitos[i].recipe.radius)
@@ -422,6 +462,7 @@ struct World: Codable, Equatable {
                     bichitos[i].dizzy = 0.3
                     bichitos[j].dizzy = 0.3
                 }
+                return false
             }
         }
     }
@@ -432,18 +473,18 @@ struct World: Codable, Equatable {
 
     // MARK: - Social life
 
-    private func isOpen(_ b: Bichito) -> Bool { b.mood.isFree && b.calm <= 0 }
-
     private mutating func encounters() {
         let grid = SpatialHash(cell: 64, points: bichitos.map { $0.pos })
-        for i in bichitos.indices where isOpen(bichitos[i]) {
-            for j in grid.near(bichitos[i].pos) where j != i && isOpen(bichitos[j]) {
+        for i in bichitos.indices where bichitos[i].mood.isFree && bichitos[i].calm <= 0 { // open to meeting someone
+            var met = -1
+            grid.forEach(near: bichitos[i].pos) { j in
+                guard j != i, bichitos[j].mood.isFree, bichitos[j].calm <= 0 else { return false }
                 let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius + 24
-                if (bichitos[j].pos - bichitos[i].pos).length < reach {
-                    meet(i, j)
-                    break
-                }
+                guard (bichitos[j].pos - bichitos[i].pos).length < reach else { return false }
+                met = j
+                return true
             }
+            if met >= 0 { meet(i, met) }
         }
     }
 
