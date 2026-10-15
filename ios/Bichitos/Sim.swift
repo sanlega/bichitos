@@ -45,50 +45,39 @@ enum WorldEvent: Codable, Equatable {
 }
 
 /// Buckets points in square cells; neighbours closer than one cell are always in the 3×3 block around a point.
-/// A dense grid over the points' bounding box, filled by counting sort: one build per pass, queries allocate nothing.
-/// shortcut: the grid spans the points' bounding box, fine for one map; points far apart would need a real hash.
+/// The points sorted by cell key, one sort per pass (n log n, no per-cell storage): a column of the 3×3 block is one
+/// run of consecutive keys, found by binary search, so queries allocate nothing.
 struct SpatialHash {
     private let cell: Double
-    private var x0 = 0, y0 = 0, cols = 0, rows = 0
-    private var start: [Int] = [] // cell c holds order[start[c]..<start[c + 1]]; c = column * rows + row
-    private var order: [Int] = [] // point indices grouped by cell, ascending within each cell
+    private var keys: [Int] = []  // sorted cell keys, one per point
+    private var order: [Int] = [] // the point behind each key: by cell, then by index
 
     init(cell: Double, points: [Vec]) {
         self.cell = cell
-        guard !points.isEmpty else { return }
-        var cx = Array(repeating: 0, count: points.count), cy = cx
-        for k in points.indices {
-            cx[k] = Int((points[k].x / cell).rounded(.down))
-            cy[k] = Int((points[k].y / cell).rounded(.down))
-        }
-        x0 = cx.min()!
-        y0 = cy.min()!
-        cols = cx.max()! - x0 + 1
-        rows = cy.max()! - y0 + 1
-        start = Array(repeating: 0, count: cols * rows + 1)
-        for k in points.indices { start[(cx[k] - x0) * rows + cy[k] - y0 + 1] += 1 }
-        for c in 0..<(cols * rows) { start[c + 1] += start[c] }
-        var next = start
-        order = Array(repeating: 0, count: points.count)
-        for k in points.indices {
-            let c = (cx[k] - x0) * rows + cy[k] - y0
-            order[next[c]] = k
-            next[c] += 1
+        let k = points.map { key($0, 0, 0) }
+        order = points.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }
+        keys = order.map { k[$0] }
+    }
+
+    /// Visits the points in the 3×3 block around `p` column by column (x−1, x, x+1), each column by row and each cell
+    /// in index order, until `stop` returns true. Callers depend on this order: it is what keeps the world deterministic.
+    func forEach(near p: Vec, _ stop: (Int) -> Bool) {
+        for dx in -1...1 {
+            let first = key(p, dx, -1), last = key(p, dx, 1)
+            var lo = 0, hi = keys.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if keys[mid] < first { lo = mid + 1 } else { hi = mid }
+            }
+            while lo < keys.count && keys[lo] <= last {
+                if stop(order[lo]) { return }
+                lo += 1
+            }
         }
     }
 
-    /// Visits the points in the 3×3 block of cells around `p`, column by column (x−1, x, x+1), each column top to
-    /// bottom and each cell in index order, until `stop` returns true. The order is fixed: callers depend on it.
-    func forEach(near p: Vec, _ stop: (Int) -> Bool) {
-        guard cols > 0 else { return }
-        let px = Int((p.x / cell).rounded(.down)) - x0, py = Int((p.y / cell).rounded(.down)) - y0
-        let lo = max(py - 1, 0), hi = min(py + 1, rows - 1)
-        guard lo <= hi else { return }
-        var x = max(px - 1, 0)
-        while x <= min(px + 1, cols - 1) {
-            for s in start[x * rows + lo]..<start[x * rows + hi + 1] where stop(order[s]) { return }
-            x += 1
-        }
+    private func key(_ p: Vec, _ dx: Int, _ dy: Int) -> Int {
+        (Int((p.x / cell).rounded(.down)) + dx) * 100_000 + Int((p.y / cell).rounded(.down)) + dy
     }
 }
 
