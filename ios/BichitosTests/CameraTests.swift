@@ -95,7 +95,7 @@ final class CameraTests: XCTestCase {
     }
 
     func testTheWholeRingFitsAtTheMapLevel() {
-        let w = World(seed: 3)
+        let w = World(testSeed: 3)
         let ring = w.mapBounds
         XCTAssertEqual(ring.center.x, w.districts[0].rect.center.x, accuracy: 1e-9, "Plaza Mayor in the middle")
         XCTAssertEqual(ring.center.y, w.districts[0].rect.center.y, accuracy: 1e-9)
@@ -113,7 +113,7 @@ final class CameraTests: XCTestCase {
     }
 
     func testDistrictUnderAPoint() {
-        var w = World(seed: 1)
+        var w = World(testSeed: 1)
         let right = try! XCTUnwrap(w.layout.firstIndex { $0.y == 0 && $0.x > 0 })
         let there = w.layout[right].center, gap = Vec(World.districtSize.x + 10, 100)
         XCTAssertEqual(w.district(at: there), 0, "locked districts don't count")

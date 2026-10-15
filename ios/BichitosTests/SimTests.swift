@@ -5,7 +5,7 @@ final class SimTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func world(seed: UInt64, count: Int) -> World {
-        var w = World(seed: seed, date: start)
+        var w = World(testSeed: seed, date: start)
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w
@@ -52,7 +52,7 @@ final class SimTests: XCTestCase {
     }
 
     func testHungryBichitoWalksToFoodAndEats() {
-        var w = World(seed: 9, date: start)
+        var w = World(testSeed: 9, date: start)
         let id = w.add(recipe(.dormilona, seed: 1), at: Vec(200, 200))
         w.bichitos[0].needs.hunger = 0.2
         let food = Vec(500, 260)
@@ -69,7 +69,7 @@ final class SimTests: XCTestCase {
     func testTerritorialCanPickAFightAndHoldsAGrudge() {
         var fought = false
         for seed in UInt64(1)...40 where !fought {
-            var w = World(seed: seed, date: start)
+            var w = World(testSeed: seed, date: start)
             let a = w.add(recipe(.territorial, seed: seed), at: Vec(300, 300))
             let b = w.add(recipe(.curiosa, seed: seed + 100), at: Vec(320, 300))
             for _ in 0..<40 { w.tick() }
@@ -115,7 +115,7 @@ final class SimTests: XCTestCase {
     func testLoversLayAnEggThatHatches() {
         var hatched = false
         for seed in UInt64(1)...20 where !hatched {
-            var w = World(seed: seed, date: start)
+            var w = World(testSeed: seed, date: start)
             let a = w.add(recipe(.romantica, seed: seed), at: Vec(300, 300))
             let b = w.add(recipe(.romantica, seed: seed + 50), at: Vec(320, 300))
             w.bichitos[0].affinity[b] = 0.9
@@ -225,9 +225,12 @@ final class SimTests: XCTestCase {
         w.bichitos[0].needs = Bichito.Needs(hunger: 0, sleep: 1, affection: 0)
         for _ in 0..<40 { w.tick() }
         XCTAssertFalse(w.notes.isEmpty)
-        XCTAssertEqual(try JSONDecoder().decode(World.self, from: JSONEncoder().encode(w)), w)
+        var decoded = try JSONDecoder().decode(World.self, from: JSONEncoder().encode(w))
+        XCTAssertEqual(decoded.timeZone, .current, "the device's clock, never saved")
+        decoded.timeZone = w.timeZone
+        XCTAssertEqual(decoded, w)
 
-        let pen = Pen(url: FileManager.default.temporaryDirectory.appendingPathComponent("pen-test.json"))
+        let pen = Pen(url: FileManager.default.temporaryDirectory.appendingPathComponent("pen-test.json"), timeZone: World.daytime)
         try pen.save(w, at: start)
         let saved = try XCTUnwrap(pen.load())
         XCTAssertEqual(saved.world, w)

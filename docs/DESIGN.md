@@ -216,6 +216,8 @@ interfaz. Los bichitos la reciben a mitad de intensidad para seguir leyéndose.
 | Noche | 21–6 | `night` `#3B3F6B` al 35% |
 
 - De noche, ventanas y farolas se encienden: círculo `warmLight` al 40% en modo suma, radio 24 u.
+  La ventana de una casita luce del atardecer al amanecer mientras alguno de sus dueños está en casa, despierto o
+  dormido (`World.windowLit`); vacía, se queda a oscuras.
 - **Nubes**: sombras `ink` al 6%, manchas grandes que cruzan el mapa despacio (el pretexto para que los bichitos sospechen de ellas).
 - Con **Reducir movimiento**: sin nubes ni reflejos, y los cambios de fase son fundidos.
 

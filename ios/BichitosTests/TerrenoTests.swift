@@ -6,7 +6,7 @@ final class TerrenoTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func world(seed: UInt64, count: Int) -> World {
-        var w = World(seed: seed, date: start)
+        var w = World(testSeed: seed, date: start)
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w
@@ -215,6 +215,46 @@ final class TerrenoTests: XCTestCase {
         XCTAssertLessThanOrEqual(Ground.frame(World.layout(seed: 7)[0]).w * Ground.texel(.close), 2048)
     }
 
+    /// #84: only what is on screen or next to it stays painted, at one resolution each; under 40 MiB at worst.
+    func testGroundKeepsOnlyWhatIsNearTheCamera() throws {
+        let layout = World.layout(seed: 7), all = layout.indices.map { District(index: $0, rect: layout[$0]) }
+        let phone = Vec(430, 932), ring = World(seed: 7) // the largest iPhone, portrait only
+        func keep(_ center: Vec, _ level: Camera.Level, _ districts: [District] = all) -> Set<Ground.Key> {
+            var world = ring
+            world.districts = districts
+            return Ground.keep(Camera(center: center, scale: level.scale).rect(phone), here: world.district(at: center), districts, seed: 7, level: level)
+        }
+        let plaza = layout[0].center
+        XCTAssertEqual(keep(plaza, .map), [], "the Mapa paints no ground")
+        let barrio = keep(plaza, .district)
+        XCTAssertTrue(barrio.contains { $0.district == 0 })
+        let left = try XCTUnwrap(layout.firstIndex { $0.x < -800 }), right = try XCTUnwrap(layout.firstIndex { $0.x > 800 })
+        XCTAssertFalse(barrio.contains { $0.district == left || $0.district == right }, "too far to the sides")
+        XCTAssertGreaterThan(barrio.count, 1, "the ones above and below")
+        XCTAssertEqual(keep(plaza, .district, [all[0]]).map(\.district), [0], "only open districts")
+        for level in [Camera.Level.district, .street, .close] {
+            for center in [plaza, layout[left].center, Vec(plaza.x, layout[0].y + layout[0].h + 64)] {
+                let kept = keep(center, level)
+                XCTAssertEqual(Set(kept.map(\.district)).count, kept.count, "one resolution per district")
+                XCTAssertEqual(kept.filter { $0.texel > Ground.texel(.district) }.count, level == .district ? 0 : 1, "the finer one only here")
+            }
+        }
+        // Worst case, every district open: the camera anywhere over the ring, at every level.
+        var worst = 0
+        for level in [Camera.Level.district, .street, .close] {
+            for x in stride(from: -900.0, through: 1700, by: 32) {
+                for y in stride(from: -700.0, through: 1300, by: 32) {
+                    worst = max(worst, keep(Vec(x, y), level).reduce(0) { $0 + Ground.bytes($1) })
+                }
+            }
+        }
+        let before = layout.indices.reduce(0) { sum, d in
+            sum + [Camera.Level.district, .street].reduce(0) { $0 + Ground.bytes(Ground.Key(seed: 7, district: d, open: [], texel: Ground.texel($1))) }
+        }
+        print("ground textures, worst case: before \(Double(before) / 1_048_576) MiB, after \(Double(worst) / 1_048_576) MiB")
+        XCTAssertLessThan(worst, 40 << 20)
+    }
+
     func testEveryPathIsInsidePaintedGround() {
         for seed in UInt64(1)...5 {
             let t = Terrain(seed: seed), frames = World.layout(seed: seed).map(Ground.frame)
@@ -233,8 +273,8 @@ final class TerrenoTests: XCTestCase {
         guard let dir = ProcessInfo.processInfo.environment["GALLERY_DIR"], !dir.isEmpty else { throw XCTSkip("GALLERY_DIR not set") }
         let t = Terrain(seed: 7)
         for d in District.themes.indices {
-            let texture = Ground.paint(Ground.Key(seed: 7, district: d, open: [0, d], texel: Ground.texel(.district)), t)
-            let png = try XCTUnwrap(UIImage(cgImage: texture.cgImage()).pngData())
+            let image = Ground.paint(Ground.Key(seed: 7, district: d, open: [0, d], texel: Ground.texel(.district)), t)
+            let png = try XCTUnwrap(UIImage(cgImage: image).pngData())
             try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("ground-\(d).png"))
         }
     }

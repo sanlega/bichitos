@@ -29,7 +29,7 @@ final class FoodTests: XCTestCase {
     }
 
     func testFavoriteFillsMoreAndGivesAffection() {
-        var w = World(seed: 1, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var w = World(testSeed: 1, date: Date(timeIntervalSince1970: 1_700_000_000))
         var rng = SeededRNG(seed: 5)
         let id = w.add(Recipe.random(using: &rng))
         var b = w.bichito(id)!
@@ -45,7 +45,7 @@ final class FoodTests: XCTestCase {
     }
 
     func testDroppedFoodKeepsItsKind() {
-        var w = World(seed: 2)
+        var w = World(testSeed: 2)
         let seta = w.dropFood(at: Vec(100, 100), kind: .seta)
         let plain = w.dropFood(at: Vec(50, 50))
         XCTAssertEqual(w.foods.first { $0.id == seta }?.kind, .seta)
@@ -96,7 +96,7 @@ final class FoodTests: XCTestCase {
     func testFavoriteHasLocalisedNames() {
         XCTAssertEqual(Food.Kind.macarron.name(.es), "macarrón")
         XCTAssertEqual(Food.Kind.croqueta.name(.en), "croquette")
-        var w = World(seed: 4)
+        var w = World(testSeed: 4)
         var rng = SeededRNG(seed: 8)
         var r = Recipe.random(using: &rng)
         r.favoriteFood = .croqueta

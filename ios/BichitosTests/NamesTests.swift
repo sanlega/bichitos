@@ -5,7 +5,7 @@ final class NamesTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func full(_ language: Language, seed: UInt64) -> World {
-        var w = World(seed: seed, date: start)
+        var w = World(testSeed: seed, date: start)
         w.language = language
         var rng = SeededRNG(seed: seed)
         for _ in 0..<World.maxPopulation { w.add(Recipe.random(using: &rng)) }
@@ -24,7 +24,7 @@ final class NamesTests: XCTestCase {
     }
 
     func testEscapedNamesAreTaken() {
-        var w = World(seed: 1, date: start)
+        var w = World(testSeed: 1, date: start)
         var rng = SeededRNG(seed: 1)
         let recipe = Recipe.random(using: &rng)
         w.add(recipe)
@@ -47,7 +47,7 @@ final class NamesTests: XCTestCase {
     }
 
     func testATypedNameIsKeptEvenIfRepeated() {
-        var w = World(seed: 2, date: start)
+        var w = World(testSeed: 2, date: start)
         var rng = SeededRNG(seed: 2)
         w.add(Recipe.random(using: &rng), name: "Zorro")
         w.add(Recipe.random(using: &rng), name: "Zorro")

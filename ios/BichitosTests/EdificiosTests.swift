@@ -5,7 +5,7 @@ final class EdificiosTests: XCTestCase {
     let start = Date(timeIntervalSince1970: 1_700_000_000)
 
     private func world(seed: UInt64, count: Int) -> World {
-        var w = World(seed: seed, date: start)
+        var w = World(testSeed: seed, date: start)
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w
@@ -131,7 +131,7 @@ final class EdificiosTests: XCTestCase {
         for i in old.bichitos.indices { old.bichitos[i].home = nil } // what a save from before casitas looks like
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("pen-old-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        let pen = Pen(url: url)
+        let pen = Pen(url: url, timeZone: World.daytime)
         try pen.save(old, at: start)
         let json = String(decoding: try Data(contentsOf: url), as: UTF8.self)
         XCTAssertFalse(json.contains("\"home\""))

@@ -121,6 +121,8 @@ struct World: Codable, Equatable {
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
     var visibleRect: Rect? = nil
+    /// Whose clock sets day and night (Noche.swift): the device's, never saved. Tests pin it.
+    var timeZone = TimeZone.current
     private var pending = 0.0
 
     private enum CodingKeys: String, CodingKey {
@@ -258,18 +260,19 @@ struct World: Codable, Equatable {
         let watched = visibleRect != nil
         let walls = bounds // once per tick, not per body: districts only unlock after the moves
         let ground = terrain
+        let drowsy = drowsiness
         if watched {
             for i in bichitos.indices {
                 let visible = isVisible(bichitos[i].pos)
                 if !visible && (tickCount + i) % World.lod != 0 { continue }
-                update(i, visible ? World.dt : World.dt * Double(World.lod), walls, ground)
+                update(i, visible ? World.dt : World.dt * Double(World.lod), walls, ground, drowsy)
             }
         } else {
             // Only every lod-th bichito is due: jump straight to them instead of skipping the rest one by one.
             let lod = World.lod, h = World.dt * Double(World.lod)
             var i = (lod - tickCount % lod) % lod
             while i < bichitos.count {
-                update(i, h, walls, ground)
+                update(i, h, walls, ground, drowsy)
                 i += lod
             }
         }
@@ -294,21 +297,44 @@ struct World: Codable, Equatable {
         visibleRect = watching
     }
 
+    /// Needs only, in 10-minute steps so each one sees its own hour: asleep and rested from its bedtime until dawn,
+    /// awake the rest of the day, tiring faster in the evening and napping on its own when worn out.
     private mutating func passTime(_ s: Double) {
         guard s > 0 else { return }
-        date += s
-        for i in bichitos.indices {
-            bichitos[i].needs.hunger = max(0, bichitos[i].needs.hunger - s / World.hungerSpan)
-            bichitos[i].needs.affection = max(0, bichitos[i].needs.affection - s / World.affectionSpan)
-            bichitos[i].needs.sleep = 1 // they nap on their own while nobody watches
-            bichitos[i].breedCooldown -= s
+        var left = s
+        while left > 0 {
+            let c = min(600, left)
+            left -= c
+            date += c
+            let drowsy = drowsiness
+            for i in bichitos.indices {
+                var n = bichitos[i].needs
+                n.hunger = max(0, n.hunger - c / World.hungerSpan)
+                n.affection = max(0, n.affection - c / World.affectionSpan)
+                if drowsy > bichitos[i].bedtime {
+                    n.sleep = 1
+                } else {
+                    n.sleep -= c * bichitos[i].recipe.sleepiness * (1 + 3 * drowsy) / World.awakeSpan
+                    if n.sleep < 0.3 { n.sleep = 1 } // a nap
+                }
+                bichitos[i].needs = n
+                bichitos[i].breedCooldown -= c
+            }
         }
         escapeNeglected()
+        // Handing over to the full simulation at night: whoever it is bedtime for is already asleep in bed.
+        let ground = terrain, drowsy = drowsiness
+        for i in bichitos.indices where drowsy > bichitos[i].bedtime {
+            if let p = bedSpot(for: bichitos[i], ground) { bichitos[i].pos = p }
+            bichitos[i].vel = .zero
+            let nap = roll(60...240)
+            bichitos[i].enter(.sleep, for: nap)
+        }
     }
 
     // MARK: - Brain and body
 
-    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect, _ ground: Terrain) {
+    private mutating func update(_ i: Int, _ h: Double, _ walls: Rect, _ ground: Terrain, _ drowsy: Double) {
         var b = bichitos[i]
         guard b.mood != .held else { return }
         b.pos = ground.nearestWalkable(b.pos) // only moves one that something else left in water or rock
@@ -321,9 +347,9 @@ struct World: Codable, Equatable {
         b.needs.affection = max(0, b.needs.affection - h / World.affectionSpan)
         if b.mood == .sleep {
             b.needs.sleep = min(1, b.needs.sleep + h / World.napSpan)
-            if b.needs.sleep >= 1 { b.timer = 0 }
+            if b.needs.sleep >= 1 && drowsy <= b.bedtime { b.timer = 0 } // rested: up, unless it is its night
         } else {
-            b.needs.sleep = max(0, b.needs.sleep - h * r.sleepiness / World.awakeSpan)
+            b.needs.sleep = max(0, b.needs.sleep - h * r.sleepiness * (1 + 3 * drowsy) / World.awakeSpan)
         }
 
         var dir = Vec.zero
@@ -396,13 +422,18 @@ struct World: Codable, Equatable {
         b.pos = b.pos + b.vel * h
         bounce(&b, walls)
         if !ground.walkable(b.pos) { shore(&b, from, ground) }
-        if b.timer <= 0 { decide(&b, ground) }
+        if b.timer <= 0 { decide(&b, ground, drowsy) }
         bichitos[i] = b
     }
 
-    private mutating func decide(_ b: inout Bichito, _ ground: Terrain) {
+    private mutating func decide(_ b: inout Bichito, _ ground: Terrain, _ drowsy: Double) {
         if b.mood == .toBed { b.enter(.sleep, for: roll(60...240)); return } // never got there: sleeps where it is
-        if b.needs.sleep < 0.3 || roll() < 0.04 * b.recipe.sleepiness {
+        let late = drowsy > b.bedtime // from its bedtime at dusk until it wakes at dawn
+        if late, b.mood == .sleep, bedSpot(for: b, ground).map({ (b.pos - $0).length < 48 }) ?? true {
+            b.enter(.sleep, for: roll(60...240)) // in bed: sleeps on
+            return
+        }
+        if late || b.needs.sleep < 0.3 || roll() < 0.04 * b.recipe.sleepiness {
             if let bed = bed(for: b, ground) { b.enter(.toBed, for: 90, target: bed) } else { b.enter(.sleep, for: roll(60...240)) }
         } else if b.needs.hunger < 0.6, let f = foods.min(by: { ($0.pos - b.pos).length < ($1.pos - b.pos).length }) {
             b.enter(.eat, for: 30, target: f.id)
@@ -419,6 +450,8 @@ struct World: Codable, Equatable {
         return ground.buildings.filter { $0.kind == .tree && $0.theme == theme }
             .min { ($0.rect.center - b.pos).length < ($1.rect.center - b.pos).length }?.id
     }
+
+    private func bedSpot(for b: Bichito, _ ground: Terrain) -> Vec? { bed(for: b, ground).flatMap { ground.buildings[$0].bed } }
 
     private mutating func eat(_ food: Food, _ b: inout Bichito) {
         foods.removeAll { $0.id == food.id }
