@@ -1,0 +1,64 @@
+# Generated with XcodeGen (brew install xcodegen && xcodegen generate). The .xcodeproj is not committed.
+name: Bichitos
+options:
+  bundleIdPrefix: com.santilega
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+targets:
+  Bichitos:
+    type: application
+    platform: iOS
+    sources:
+      - path: Bichitos
+    info:
+      path: Bichitos/Info.plist
+      properties:
+        CFBundleDisplayName: Bichitos
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiresFullScreen: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.santilega.bichitos
+        PRODUCT_NAME: Bichitos
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+
+  BichitosTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BichitosTests
+    dependencies:
+      - target: Bichitos
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: com.santilega.bichitos.tests
+
+schemes:
+  Bichitos:
+    build:
+      targets:
+        Bichitos: all
+    test:
+      targets:
+        - BichitosTests
+    run:
+      config: Debug
+    archive:
+      config: Release
