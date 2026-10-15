@@ -37,7 +37,11 @@ final class WorldScene: SKScene, ObservableObject {
 
     private var lens: Camera
     private var pinchFrom = 3.0
+    /// Each district's ground (`Ground`), with its name near the top and its water reflections.
     private var districtNodes: [SKSpriteNode] = []
+    private var glintNodes: [[(node: SKSpriteNode, at: Vec)]] = []
+    /// Painted ground by district and zoom level; dropped when a district opens (the paths change).
+    private var groundTextures: [Ground.Key: SKTexture] = [:]
     /// Zoom level the camera is at (or springing to), for what each level shows.
     var level: Camera.Level { lens.level }
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
@@ -307,11 +311,11 @@ final class WorldScene: SKScene, ObservableObject {
         sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
-    /// Each district is a tinted patch of ground with its name near the top.
+    /// Each district is its painted ground with its name near the top; the Mapa level draws blobs instead (`drawMap`).
     private func drawDistricts() {
         while districtNodes.count < world.districts.count {
             let d = world.districts[districtNodes.count]
-            let patch = SKSpriteNode(color: Ink.tint(d.index), size: .zero)
+            let patch = SKSpriteNode() // its texture comes before any size
             patch.anchorPoint = CGPoint(x: 0, y: 1)
             patch.zPosition = -100
             let font = UIFont.systemFont(ofSize: 28, weight: .heavy)
@@ -321,19 +325,44 @@ final class WorldScene: SKScene, ObservableObject {
                 .foregroundColor: Ink.ink.withAlphaComponent(0.18),
             ])
             label.verticalAlignmentMode = .top
-            label.zPosition = 1
+            label.zPosition = 2
             patch.addChild(label)
+            // Two reflections on the water, fading in and out every 4 s, half a cycle apart.
+            let glints = Ground.glints(world.terrain, in: d.rect).enumerated().map { k, p in
+                let g = SKSpriteNode(texture: Ground.glint)
+                g.alpha = 0
+                g.zPosition = 1
+                g.run(.sequence([.wait(forDuration: 2 * Double(k)), .repeatForever(.sequence([
+                    .fadeAlpha(to: 0.6, duration: 1), .wait(forDuration: 1), .fadeAlpha(to: 0, duration: 1), .wait(forDuration: 1),
+                ]))]))
+                patch.addChild(g)
+                return (node: g, at: p)
+            }
+            glintNodes.append(glints)
             addChild(patch)
             districtNodes.append(patch)
         }
         mapLayer.isHidden = level != .map
         if level == .map { drawMap() }
+        let open = world.districts.map(\.index).sorted(), still = UIAccessibility.isReduceMotionEnabled
         for (k, patch) in districtNodes.enumerated() {
             patch.isHidden = level == .map
-            let r = world.districts[k].rect
-            patch.position = screen(Vec(r.x, r.y))
-            patch.size = CGSize(width: CGFloat(r.w) * unit, height: CGFloat(r.h) * unit)
-            patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -60)
+            guard level != .map else { continue }
+            let key = Ground.Key(seed: world.layoutSeed ?? 0, district: world.districts[k].index, open: open, texel: Ground.texel(level))
+            if groundTextures[key] == nil {
+                groundTextures = groundTextures.filter { $0.key.open == open }
+                groundTextures[key] = Ground.paint(key, world.terrain)
+            }
+            if patch.texture !== groundTextures[key] { patch.texture = groundTextures[key] }
+            let f = Ground.frame(world.districts[k].rect)
+            patch.position = screen(Vec(f.x, f.y))
+            patch.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
+            patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -CGFloat(Ground.margin) * unit - 60)
+            for g in glintNodes[k] {
+                g.node.isHidden = still // Reduce Motion: no reflections
+                g.node.position = CGPoint(x: CGFloat(g.at.x - f.x) * unit, y: -CGFloat(g.at.y - f.y) * unit)
+                g.node.size = CGSize(width: 12 * unit, height: 4 * unit)
+            }
         }
     }
 

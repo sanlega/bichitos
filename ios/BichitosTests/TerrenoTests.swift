@@ -123,4 +123,107 @@ final class TerrenoTests: XCTestCase {
         let back = try JSONDecoder().decode(World.self, from: Data(json.utf8))
         XCTAssertEqual(back.terrain.cells, w.terrain.cells)
     }
+
+    // MARK: - Painting (#36)
+
+    /// A `cols` × `rows` mask, true inside the cells `inside` says.
+    private func mask(_ cols: Int, _ rows: Int, _ inside: (Int, Int) -> Bool?) -> [Bool?] {
+        (0..<rows).flatMap { r in (0..<cols).map { c in inside(c, r) } }
+    }
+
+    /// Even-odd: inside an odd number of loops.
+    private func inside(_ p: Vec, _ loops: [[Vec]]) -> Bool {
+        var odd = false
+        for l in loops {
+            for (a, b) in zip(l, l.dropFirst() + [l[0]]) where (a.y > p.y) != (b.y > p.y) {
+                if p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x) { odd.toggle() }
+            }
+        }
+        return odd
+    }
+
+    func testALoneBlobIsACircleOf16u() {
+        let loops = Terrain.outlines(mask(12, 12) { (4...7).contains($0) && (4...7).contains($1) }, cols: 12, rows: 12, origin: .zero)
+        XCTAssertEqual(loops.count, 1)
+        let d = loops[0].map { ($0 - Vec(96, 96)).length }
+        print("OUTLINE 4×4 blob: \(loops[0].count) points, radius \(d.min()!)...\(d.max()!)")
+        XCTAssertGreaterThan(loops[0].count, 8)
+        XCTAssertTrue(d.allSatisfy { (26...38).contains($0) }, "\(d)") // 16 u = 32 world units
+    }
+
+    func testStraightRunsStayOnTheCellEdgesAndCornersRoundOff() {
+        let loops = Terrain.outlines(mask(16, 16) { (3...12).contains($0) && (3...12).contains($1) }, cols: 16, rows: 16, origin: .zero)
+        XCTAssertEqual(loops.count, 1)
+        for p in loops[0] where abs(p.x - 128) < 32 { XCTAssertTrue(abs(p.y - 48) < 1 || abs(p.y - 208) < 1, "\(p)") }
+        for p in loops[0] where abs(p.y - 128) < 32 { XCTAssertTrue(abs(p.x - 48) < 1 || abs(p.x - 208) < 1, "\(p)") }
+        for corner in [Vec(48, 48), Vec(208, 48), Vec(48, 208), Vec(208, 208)] {
+            XCTAssertGreaterThan(loops[0].map { ($0 - corner).length }.min()!, 8)
+        }
+        XCTAssertTrue(inside(Vec(128, 128), loops))
+        XCTAssertFalse(inside(Vec(20, 20), loops))
+    }
+
+    func testSpecksVanishAndUnknownCellsTakeTheirNeighbours() {
+        XCTAssertTrue(Terrain.outlines(mask(8, 8) { (3...4).contains($0) && (3...4).contains($1) }, cols: 8, rows: 8, origin: .zero).isEmpty)
+        XCTAssertTrue(Terrain.outlines(mask(8, 8) { _, _ in false }, cols: 8, rows: 8, origin: .zero).isEmpty)
+        XCTAssertEqual(Terrain.outlines(mask(9, 9) { (3...5).contains($0) && (3...5).contains($1) }, cols: 9, rows: 9, origin: .zero).count, 1)
+        // A 3-cell gap through a blob: cut when it is known ground, bridged when it is unknown (a path over the pond).
+        func blob(gap: Bool?) -> [[Vec]] {
+            Terrain.outlines(mask(20, 12) { c, r in (2...9).contains(r) && (2...17).contains(c) ? ((8...10).contains(c) ? gap : true) : false },
+                             cols: 20, rows: 12, origin: Vec(-100, 50))
+        }
+        XCTAssertEqual(blob(gap: false).count, 2)
+        XCTAssertEqual(blob(gap: nil).count, 1)
+        XCTAssertTrue(inside(Vec(-100 + 9.5 * 16, 50 + 6 * 16), blob(gap: nil)))
+    }
+
+    func testOutlinesFollowTheCells() {
+        for seed in UInt64(1)...5 {
+            let t = Terrain(seed: seed), rects = World.layout(seed: seed)
+            for (k, rect) in rects.enumerated() {
+                let look = Terrain.look(District.themes[k].terrain)
+                for kind in [look.other] + (look.obstacle.map { [$0] } ?? []) {
+                    let loops = t.outlines(kind, in: rect, under: kind == look.other ? [.rock, .water] : [])
+                    XCTAssertTrue(loops.allSatisfy { $0.count >= 3 })
+                    func around(_ p: Vec, _ n: Int) -> [Terrain.Cell] {
+                        (-n...n).flatMap { dy in (-n...n).map { dx in t.at(p + Vec(Double(dx), Double(dy)) * Terrain.cell) } }
+                    }
+                    for y in stride(from: rect.y + 8, to: rect.y + rect.h, by: Terrain.cell) {
+                        for x in stride(from: rect.x + 8, to: rect.x + rect.w, by: Terrain.cell) {
+                            let p = Vec(x, y), near = around(p, 2)
+                            if around(p, 1).allSatisfy({ $0 == kind }) { XCTAssertTrue(inside(p, loops), "\(kind) at \(p), seed \(seed)") }
+                            if !near.contains(kind) && !near.contains(.path) && (kind != look.other || !near.contains { !$0.walkable }) {
+                                XCTAssertFalse(inside(p, loops), "no \(kind) at \(p), seed \(seed)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testGroundIsPaintedOncePerDistrictAndZoomLevel() {
+        let key = { (d: Int, open: [Int], level: Camera.Level) in Ground.Key(seed: 7, district: d, open: open, texel: Ground.texel(level)) }
+        XCTAssertEqual(key(0, [0], .district), key(0, [0], .district))
+        XCTAssertNotEqual(key(0, [0], .district), key(1, [0], .district))
+        XCTAssertNotEqual(key(0, [0], .district), key(0, [0, 3], .district), "a new district brings a new path")
+        XCTAssertNotEqual(key(0, [0], .district), key(0, [0], .street))
+        XCTAssertEqual(key(0, [0], .street), key(0, [0], .close), "capped: Calle and Cerca share one texture")
+        XCTAssertEqual(Set([key(0, [0], .district), key(0, [0], .district), key(0, [0], .street)]).count, 2)
+        XCTAssertEqual(Ground.texel(.district), 1.5) // one texture pixel per screen point
+        XCTAssertLessThanOrEqual(Ground.frame(World.layout(seed: 7)[0]).w * Ground.texel(.close), 2048)
+    }
+
+    func testEveryPathIsInsidePaintedGround() {
+        for seed in UInt64(1)...5 {
+            let t = Terrain(seed: seed), frames = World.layout(seed: seed).map(Ground.frame)
+            for (k, path) in t.paths.enumerated() {
+                for s in stride(from: 0.0, through: 1.0, by: 0.01) {
+                    let p = path[0] + (path[1] - path[0]) * s
+                    XCTAssertTrue(frames[0].contains(p) || frames[k + 1].contains(p), "path \(k) at \(p), seed \(seed)")
+                }
+            }
+            for (a, b) in zip(frames, frames.dropFirst()) { XCTAssertEqual(a.w, b.w) }
+        }
+    }
 }
