@@ -25,20 +25,20 @@ final class WorldScene: SKScene, ObservableObject {
     /// Name of the district the camera is looking at, for the title on top.
     @Published private(set) var title = ""
     /// A short line about something the map just did (a bichito moving out, a new district).
-    @Published private(set) var news: String?
+    @Published private(set) var news: String? = nil
     private var newsUntil = 0.0
     private var homes: [Int: Int] = [:]  // bichito → home district, to notice emigrations
     private var knownDistricts: Int
 
-    private var camera: Camera
+    private var lens: Camera
     private var pinchFrom = 3
     private var districtNodes: [SKSpriteNode] = []
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
-    private var pixel: CGFloat { CGFloat(camera.pixel) }
-    private var unit: CGFloat { CGFloat(camera.unit) }
+    private var pixel: CGFloat { CGFloat(lens.pixel) }
+    private var unit: CGFloat { CGFloat(lens.unit) }
     private var screenSize: Vec { Vec(Double(size.width), Double(size.height)) }
     private var origin: Vec { // world point at the top-left of the screen
-        let r = camera.rect(screenSize)
+        let r = lens.rect(screenSize)
         return Vec(r.x, r.y)
     }
     private var lastTime: TimeInterval?
@@ -58,7 +58,7 @@ final class WorldScene: SKScene, ObservableObject {
     init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
         self.populate = populate
-        camera = Camera(center: focus ?? world.districts[0].rect.center, pixel: Camera.pixels.lowerBound)
+        lens = Camera(center: focus ?? world.districts[0].rect.center, pixel: Camera.pixels.lowerBound)
         knownDistricts = world.districts.count
         homes = Dictionary(world.bichitos.map { ($0.id, $0.district) }, uniquingKeysWith: { a, _ in a })
         super.init(size: CGSize(width: 1, height: 1))
@@ -72,7 +72,7 @@ final class WorldScene: SKScene, ObservableObject {
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }
-        if oldSize.width <= 10 { camera.pixel = max(Camera.pixels.lowerBound, Int(min(size.width, size.height) / 140)) }
+        if oldSize.width <= 10 { lens.pixel = max(Camera.pixels.lowerBound, Int(min(size.width, size.height) / 140)) }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -83,8 +83,8 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Keeps the camera on the (possibly grown) map and tells the simulation what is on screen.
     private func fit() {
-        camera.clamp(to: world.size, screenSize)
-        world.visibleRect = camera.rect(screenSize)
+        lens.clamp(to: world.size, screenSize)
+        world.visibleRect = lens.rect(screenSize)
     }
 
     /// After a zoom: sizes follow the new pixel; simple things are simply drawn again.
@@ -104,14 +104,14 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Pinch zoom in whole pixel steps, around the fingers.
     @objc private func pinched(_ g: UIPinchGestureRecognizer) {
-        if g.state == .began { pinchFrom = camera.pixel }
+        if g.state == .began { pinchFrom = lens.pixel }
         guard g.state == .changed, let view else { return }
         let target = Int((Double(pinchFrom) * Double(g.scale)).rounded())
-        let before = camera.pixel
+        let before = lens.pixel
         let f = g.location(in: view)
-        camera.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
+        lens.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
         fit()
-        if camera.pixel != before { relayout() }
+        if lens.pixel != before { relayout() }
     }
 
     // MARK: - Frame
@@ -127,7 +127,7 @@ final class WorldScene: SKScene, ObservableObject {
             for b in world.bichitos { bichitoNodes[b.id]?.tick(b) }
         }
         fit()
-        let name = world.districts[world.district(at: camera.center)].name(world.language)
+        let name = world.districts[world.district(at: lens.center)].name(world.language)
         if name != title { title = name }
         if news != nil, currentTime > newsUntil { news = nil }
         if world.districts.count > knownDistricts {
@@ -295,7 +295,7 @@ extension WorldScene {
             world.move(id, to: worldPoint(p) + grabOffset)
         } else { // dragging empty ground pans the map
             let q = t.previousLocation(in: view)
-            camera.pan(by: Vec(Double(p.x - q.x), Double(p.y - q.y)))
+            lens.pan(by: Vec(Double(p.x - q.x), Double(p.y - q.y)))
             fit()
         }
     }
