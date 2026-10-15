@@ -140,9 +140,9 @@ extension Terrain {
         return Rect(x: b.x, y: b.y, w: b.w, h: b.h + (kind == .casita ? 32 : 0))
     }
 
-    /// `ground` plus the gap kept around it, 8 u around buildings and 4 u around decoration: what no other room overlaps.
+    /// `ground` plus a gap of 4 u around it: what no other room overlaps, so two bases are always 8 u apart.
     private static func room(_ r: Rect, _ kind: Building.Kind) -> Rect {
-        let g = ground(r, kind), pad = kind.isDecoration ? 8.0 : 16.0
+        let g = ground(r, kind), pad = 8.0
         return Rect(x: g.x - pad, y: g.y - pad, w: g.w + 2 * pad, h: g.h + 2 * pad)
     }
 
@@ -152,7 +152,9 @@ extension Terrain {
     private func findRoom(_ size: Vec, _ kind: Building.Kind, in district: Rect, avoiding rooms: [Rect],
                           _ rng: inout SeededRNG) -> Rect? {
         let s = Terrain.cell, inset = 40.0
-        let c0 = Int(((district.x + inset - origin.x) / s).rounded(.up)), r0 = Int(((district.y + inset - origin.y) / s).rounded(.up))
+        // The base stays `inset` clear of the edges; what is drawn above it only has to stay inside the district.
+        let top = max(district.y + 16, district.y + inset - (size.y - Terrain.base(Rect(x: 0, y: 0, w: size.x, h: size.y), kind).h))
+        let c0 = Int(((district.x + inset - origin.x) / s).rounded(.up)), r0 = Int(((top - origin.y) / s).rounded(.up))
         let c1 = Int(((district.x + district.w - inset - size.x - origin.x) / s).rounded(.down))
         let r1 = Int(((district.y + district.h - inset - size.y - origin.y) / s).rounded(.down))
         guard c0 <= c1, r0 <= r1 else { return nil }
