@@ -40,8 +40,12 @@ final class WorldScene: SKScene, ObservableObject {
     /// Each district's ground (`Ground`) and its water reflections.
     private var districtNodes: [SKSpriteNode] = []
     private var glintNodes: [[(node: SKSpriteNode, at: Vec)]] = []
-    /// Painted ground by district and zoom level; dropped when a district opens (the paths change).
+    /// Painted ground, only what `Ground.keep` says (#84); painted off the main thread, `painting` meanwhile.
     private var groundTextures: [Ground.Key: SKTexture] = [:]
+    private var kept: Set<Ground.Key> = []
+    private var painting: Set<Ground.Key> = []
+    /// A tiny plain ground per district, shown until its painted one is ready.
+    private var placeholders: [Ground.Key: SKTexture] = [:]
     /// Zoom level the camera is at (or springing to), for what each level shows.
     var level: Camera.Level { lens.level }
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
@@ -91,6 +95,28 @@ final class WorldScene: SKScene, ObservableObject {
         scaleMode = .resizeFill
         anchorPoint = .zero
         backgroundColor = Ink.mist
+        NotificationCenter.default.addObserver(self, selector: #selector(memoryWarning), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+    }
+
+    /// Low memory: every ground texture goes; the next frame paints again only what is on screen.
+    @objc private func memoryWarning() {
+        groundTextures = [:]
+        placeholders = [:]
+        for patch in districtNodes { patch.texture = nil }
+    }
+
+    /// Paints the ground in the background; the texture is made back on the main thread, if still wanted.
+    private func paint(_ key: Ground.Key) {
+        painting.insert(key)
+        let terrain = world.terrain
+        DispatchQueue.global(qos: .userInitiated).async {
+            let image = Ground.paint(key, terrain)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                painting.remove(key)
+                if kept.contains(key) { groundTextures[key] = SKTexture(cgImage: image) }
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -376,16 +402,21 @@ final class WorldScene: SKScene, ObservableObject {
             mapLayer.run(onMap ? .fadeIn(withDuration: t) : .sequence([.fadeOut(withDuration: t), .hide()]), withKey: "fade")
         }
         if !mapLayer.isHidden { drawMap() }
-        let open = world.districts.map(\.index).sorted(), still = UIAccessibility.isReduceMotionEnabled
+        let seed = world.layoutSeed ?? 0, still = UIAccessibility.isReduceMotionEnabled
+        kept = Ground.keep(lens.rect(screenSize), here: here, world.districts, seed: seed, level: level)
+        groundTextures = groundTextures.filter { kept.contains($0.key) }
+        for key in kept where groundTextures[key] == nil && !painting.contains(key) { paint(key) }
         for (k, patch) in districtNodes.enumerated() {
+            let index = world.districts[k].index, wanted = kept.first { $0.district == index }
+            if let wanted, let t = groundTextures[wanted] {
+                if patch.texture !== t { patch.texture = t }
+            } else if wanted == nil || patch.texture == nil { // a texture on its way keeps the last one up meanwhile
+                let plain = Ground.Key(seed: seed, district: index, open: [], texel: 1.0 / 8)
+                if placeholders[plain] == nil { placeholders[plain] = SKTexture(cgImage: Ground.paint(plain, world.terrain, plain: true)) }
+                if patch.texture !== placeholders[plain] { patch.texture = placeholders[plain] }
+            }
             patch.isHidden = level == .map
             guard level != .map else { continue }
-            let key = Ground.Key(seed: world.layoutSeed ?? 0, district: world.districts[k].index, open: open, texel: Ground.texel(level))
-            if groundTextures[key] == nil {
-                groundTextures = groundTextures.filter { $0.key.open == open }
-                groundTextures[key] = Ground.paint(key, world.terrain)
-            }
-            if patch.texture !== groundTextures[key] { patch.texture = groundTextures[key] }
             let f = Ground.frame(world.districts[k].rect)
             patch.position = screen(Vec(f.x, f.y))
             patch.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
