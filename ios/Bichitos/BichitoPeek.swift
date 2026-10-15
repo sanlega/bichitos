@@ -38,9 +38,7 @@ struct BichitoPeek: View {
                     Text(b.name)
                         .font(.system(size: 18, weight: .heavy, design: .rounded))
                         .lineLimit(1)
-                    NeedBar(name: "Comida", value: b.needs.hunger)
-                    NeedBar(name: "Descanso", value: b.needs.sleep)
-                    NeedBar(name: "Cariño", value: b.needs.affection)
+                    ForEach(Need.allCases, id: \.self) { NeedBar($0, value: $0.value(b.needs)) }
                 }
             }
             HStack(spacing: 8) {

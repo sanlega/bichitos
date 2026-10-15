@@ -20,21 +20,25 @@ struct WorldView: View {
             VStack(spacing: 8) {
                 Text(scene.title)
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(Ink.ink))
-                if let news = scene.news {
-                    Text(news)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color(Ink.ink))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(.white).shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4))
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    .foregroundStyle(Color.ink)
+                    .allowsHitTesting(false)
+                if let event = scene.toast {
+                    Button { scene.onToastTap?(event) } label: {
+                        Text(scene.world.toastText(event))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.card).floating())
+                    }
+                    .buttonStyle(.plain)
+                    .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
             }
             .padding(.top, 8)
-            .allowsHitTesting(false)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             VStack(spacing: 8) {
                 Spacer()
                 if let id = peek {
@@ -43,7 +47,7 @@ struct WorldView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 16)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: peek)
         }
@@ -70,7 +74,7 @@ struct WorldView: View {
     }
 }
 
-/// Floating bottom tray: white card, radius 20, round icon buttons.
+/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons with the principal one in the centre.
 struct Tray: View {
     @Binding var foodMode: Bool
     var scare: () -> Void
@@ -78,33 +82,19 @@ struct Tray: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            icon("carrot.fill", "Modo comida", fill: foodMode ? Color(Ink.ink) : Color(Ink.ink).opacity(0.06),
-                 tint: foodMode ? .white : Color(Ink.ink)) {
-                foodMode.toggle()
-                Haptics.tap()
-            }
-            .accessibilityAddTraits(foodMode ? .isSelected : [])
-            icon("bolt.fill", "Asustar", fill: Color(Ink.ink).opacity(0.06), tint: Color(Ink.ink), action: scare)
-            icon("plus", "Nuevo bichito", fill: Color(Ink.accent), tint: .white, action: add)
+            Button { foodMode.toggle() } label: { Image(systemName: "carrot.fill") }
+                .buttonStyle(IconButtonStyle(background: foodMode ? Color.accent : Color.fill))
+                .accessibilityLabel("Modo comida")
+                .accessibilityAddTraits(foodMode ? .isSelected : [])
+            Button(action: add) { Image(systemName: "plus") }
+                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
+                .accessibilityLabel("Nuevo bichito")
+            Button(action: scare) { Image(systemName: "bolt.fill") }
+                .buttonStyle(IconButtonStyle())
+                .accessibilityLabel("Asustar")
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.white)
-                .shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4)
-        )
-    }
-
-    private func icon(_ symbol: String, _ label: String, fill: Color, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(fill))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
     }
 }
 
