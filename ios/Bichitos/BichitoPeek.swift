@@ -57,6 +57,7 @@ struct BichitoPeek: View {
             VStack(spacing: 4) {
                 Image(systemName: symbol)
                     .font(.system(size: 17, weight: .semibold))
+                    .frame(height: 22) // symbols differ in height; keep the labels on one line
                 Text(label)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .lineLimit(1)
