@@ -66,8 +66,9 @@ enum Terrarium {
                 w.record(.hatched(w.bichitos[6].id))
             }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
-            // #37: one more, asleep in the casita on screen nearest the middle, so the captures show one "Ocupado".
-            let casitas = w.terrain.buildings.filter { $0.kind == .casita && $0.theme == 0 && $0.door.map(v.contains) == true }
+            // #37: one more, asleep in the casita wholly on screen nearest the middle, so the captures show one "Ocupado".
+            func whole(_ b: Building) -> Bool { v.contains(Vec(b.rect.x, b.rect.y)) && v.contains(Vec(b.rect.x + b.rect.w, b.rect.y + b.rect.h + 32)) }
+            let casitas = w.terrain.buildings.filter { $0.kind == .casita && $0.theme == 0 && $0.door != nil && whole($0) }
             if let c = casitas.min(by: { ($0.door! - v.center).length < ($1.door! - v.center).length }), let door = c.door,
                let i = w.index(of: w.add(Recipe.random(using: &rng), at: door)) {
                 w.bichitos[i].pos = door
