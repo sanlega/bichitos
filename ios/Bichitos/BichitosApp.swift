@@ -32,9 +32,9 @@ enum Terrarium {
             }
             var rng = SeededRNG(seed: 7)
             let recipes = (0..<9).map { _ in Recipe.random(using: &rng) }
-            // The love pair shares row 1, just out of reach (so neither walks) and offset in height so the names don't collide.
-            let gap = recipes[2].radius + recipes[3].radius + 5
-            let mid = at(0.5, 1), side = Vec(0.85, 0.53) * (gap / 2)
+            // The love pair shares row 1 side by side, as far apart as love allows without walking (reach + 4), names level.
+            let gap = recipes[2].radius + recipes[3].radius + 3.5
+            let mid = at(0.5, 1), side = Vec(gap / 2, 0)
             let slots = [at(0.27, 3), at(0.27, 0), mid - side, mid + side, at(0.73, 0),
                          at(0.27, 2), at(0.73, 2), at(0.73, 3), at(0.7, 4)]
             for (r, p) in zip(recipes, slots) { w.add(r, at: p) }
