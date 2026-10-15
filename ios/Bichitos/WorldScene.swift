@@ -562,7 +562,8 @@ extension WorldScene {
 /// Name, icon and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
-    private let label = SKLabelNode()
+    /// The name in the pixel font (DESIGN.md "Tipografía"): ×2 at Calle, ×3 at Cerca.
+    private let label = SKSpriteNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
     /// The pixel state icon, bare over the head (DESIGN.md "Los dos mundos": no soft bubble around pixel art).
@@ -587,6 +588,7 @@ final class BichitoNode: SKNode {
         didSet {
             guard level != oldValue else { return }
             label.isHidden = !level.showsWords
+            sizeLabel()
             if talk != nil { talk?.shown = -1 } else { show(icon: shownIcon) } // redrawn for the new level
         }
     }
@@ -611,7 +613,7 @@ final class BichitoNode: SKNode {
         addChild(sprite)
 
         show(name: b.name)
-        label.verticalAlignmentMode = .top
+        label.anchorPoint = CGPoint(x: 0.5, y: 1)
         label.zPosition = 50
         label.isHidden = !level.showsWords
         addChild(label)
@@ -661,11 +663,14 @@ final class BichitoNode: SKNode {
 
     private func show(name: String) {
         shownName = name
-        let font = UIFont.systemFont(ofSize: 11, weight: .bold)
-        label.attributedText = NSAttributedString(string: name, attributes: [
-            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 11),
-            .foregroundColor: Ink.ink.withAlphaComponent(0.7),
-        ])
+        label.texture = Sprites.shared.texture(name: name)
+        sizeLabel()
+    }
+
+    private func sizeLabel() {
+        guard let size = label.texture?.size() else { return }
+        let k: CGFloat = level == .close ? 3 : 2
+        label.size = CGSize(width: size.width * k, height: size.height * k)
     }
 
     /// A happy squash: the spring bounces it back.
