@@ -64,6 +64,9 @@ final class WorldScene: SKScene, ObservableObject {
     private var labels = LabelLayout()
     private var named: [BichitoNode] = [], names: [CGRect] = []
     private var talkers: [BichitoNode] = [], bubbles: [CGRect] = [], shown: [Bool] = []
+    /// #79: frames of the SwiftUI interface over the map, in window points (y down), set by `WorldView`.
+    var obstacles: [CGRect] = []
+    private var walls: [CGRect] = []
     private let mapLayer = SKNode()
     private var mapKey = ""
     /// Tray toggle: a tap on the ground drops food.
@@ -332,7 +335,10 @@ final class WorldScene: SKScene, ObservableObject {
         func away(_ n: BichitoNode) -> CGFloat { hypot(n.position.x - mid.x, n.position.y - mid.y) }
         talkers.sort { $0.bubbleRank != $1.bubbleRank ? $0.bubbleRank > $1.bubbleRank : away($0) < away($1) }
         for n in talkers { bubbles.append(n.bubbleFrame ?? .null) }
-        labels.place(names: &names, bubbles: bubbles, shown: &shown)
+        walls.removeAll(keepingCapacity: true)
+        // The SpriteView fills the window, so only y flips.
+        for r in obstacles { walls.append(CGRect(x: r.minX, y: size.height - r.maxY, width: r.width, height: r.height)) }
+        labels.place(names: &names, bubbles: bubbles, shown: &shown, obstacles: walls)
         for (n, ok) in zip(talkers, shown) { n.bubbleBlocked = !ok }
         for (n, r) in zip(named, names) { n.placeName(r) }
     }

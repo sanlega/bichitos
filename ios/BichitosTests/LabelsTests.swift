@@ -55,6 +55,24 @@ final class LabelsTests: XCTestCase {
         XCTAssertEqual(shown, [false, true])
     }
 
+    /// #79: the interface over the map is an obstacle: a bubble under it waits, a name moves out or hides.
+    func testInterfaceIsAnObstacle() {
+        var layout = LabelLayout(), shown: [Bool] = []
+        let pill = CGRect(x: 0, y: 700, width: 200, height: 50), tray = CGRect(x: 0, y: 0, width: 400, height: 80)
+        let clearName = CGRect(x: 0, y: 400, width: 40, height: 14)
+        var names = [CGRect(x: 20, y: 710, width: 40, height: 14), CGRect(x: 300, y: 70, width: 40, height: 14), clearName]
+        let bubbles = [CGRect(x: 10, y: 690, width: 80, height: 30), CGRect(x: 100, y: 40, width: 80, height: 30), CGRect(x: 200, y: 400, width: 80, height: 30)]
+        layout.place(names: &names, bubbles: bubbles, shown: &shown, obstacles: [pill, tray])
+        XCTAssertEqual(shown, [false, false, true])
+        XCTAssertEqual(names[2], clearName, "a name clear of the interface stays")
+        for r in names where !r.isNull {
+            XCTAssertFalse(LabelLayout.touch(r, pill), "\(r) under the pill")
+            XCTAssertFalse(LabelLayout.touch(r, tray), "\(r) under the tray")
+        }
+        XCTAssertFalse(names[0].isNull, "a name just under the pill drops below it")
+        XCTAssertLessThan(names[0].maxY, pill.minY)
+    }
+
     /// 40 bichitos packed in a corner: no two names touch, each stays near its own, and it is quick.
     func testCrowdOfForty() {
         var g = SeededRNG(seed: 77)
