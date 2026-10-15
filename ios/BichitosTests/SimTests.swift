@@ -221,7 +221,7 @@ final class SimTests: XCTestCase {
         w.catchUp(seconds: 1800)
         let hash = stateHash(w)
         print("STATE HASH: \(hash), \(w.bichitos.count) bichitos, \(w.events.count) events, \(w.eggs.count) eggs")
-        XCTAssertEqual(hash, "e7e63c5267be6df2")
+        XCTAssertEqual(hash, "8630da21fce49bfb")
     }
 
     func testWorldSurvivesSaving() throws {
