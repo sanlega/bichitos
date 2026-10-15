@@ -24,7 +24,7 @@ final class CameraTests: XCTestCase {
         c.zoom(to: 20, around: focus, screen)
         XCTAssertEqual(c.scale, 8)
         c.zoom(to: 0.1, around: focus, screen)
-        XCTAssertEqual(c.scale, 1)
+        XCTAssertEqual(c.scale, 0.28)
     }
 
     func testSpritesUseTheNearestWholePixel() {
@@ -35,10 +35,10 @@ final class CameraTests: XCTestCase {
     }
 
     func testNearestLevel() {
-        XCTAssertEqual(Camera.Level.allCases.map(\.scale), [1, 3, 5, 8])
-        XCTAssertEqual(Camera.Level.nearest(1), .map)
-        XCTAssertEqual(Camera.Level.nearest(1.6), .map)
-        XCTAssertEqual(Camera.Level.nearest(1.8), .district) // nearer by ratio, though 2 is halfway
+        XCTAssertEqual(Camera.Level.allCases.map(\.scale), [0.28, 3, 5, 8])
+        XCTAssertEqual(Camera.Level.nearest(0.28), .map)
+        XCTAssertEqual(Camera.Level.nearest(0.8), .map)
+        XCTAssertEqual(Camera.Level.nearest(1), .district) // nearer by ratio, though 1.6 is halfway
         XCTAssertEqual(Camera.Level.nearest(3.8), .district)
         XCTAssertEqual(Camera.Level.nearest(4), .street)
         XCTAssertEqual(Camera.Level.nearest(6.2), .street)
@@ -94,6 +94,24 @@ final class CameraTests: XCTestCase {
         XCTAssertEqual(wide.center.x, -200)
     }
 
+    func testTheWholeRingFitsAtTheMapLevel() {
+        let w = World(seed: 3)
+        let ring = w.mapBounds
+        XCTAssertEqual(ring.center.x, w.districts[0].rect.center.x, accuracy: 1e-9, "Plaza Mayor in the middle")
+        XCTAssertEqual(ring.center.y, w.districts[0].rect.center.y, accuracy: 1e-9)
+        for phone in [Vec(375, 667), Vec(393, 852), Vec(440, 956)] {
+            var c = Camera(center: .zero, scale: 1)
+            c.zoom(to: 0, around: phone * 0.5, phone) // pinched all the way out
+            XCTAssertEqual(c.level, .map)
+            c.clamp(to: ring, phone)
+            let r = c.rect(phone)
+            XCTAssertLessThanOrEqual(r.x, ring.x)
+            XCTAssertLessThanOrEqual(r.y, ring.y)
+            XCTAssertGreaterThanOrEqual(r.x + r.w, ring.x + ring.w)
+            XCTAssertGreaterThanOrEqual(r.y + r.h, ring.y + ring.h)
+        }
+    }
+
     func testDistrictUnderAPoint() {
         var w = World(seed: 1)
         let right = try! XCTUnwrap(w.layout.firstIndex { $0.y == 0 && $0.x > 0 })
@@ -107,8 +125,8 @@ final class CameraTests: XCTestCase {
 
     func testMovingOutShowsASuitcase() {
         let fed = Bichito.Needs()
-        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: true), "🧳")
+        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: true), .suitcase)
         XCTAssertNil(Look.bubble(mood: .wander, needs: fed, dizzy: 0, moving: false))
-        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0, moving: true), "💤")
+        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0, moving: true), .zzz)
     }
 }

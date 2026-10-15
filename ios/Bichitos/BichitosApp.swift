@@ -23,7 +23,10 @@ enum Terrarium {
     }
 
     static func screenshot() -> WorldScene {
-        WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, v in
+        WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, seen in
+            // Inside Plaza Mayor even when the Mapa level sees the whole ring (the egg and the note aren't clamped).
+            let p = w.districts[0].rect, x0 = max(seen.x, p.x), y0 = max(seen.y, p.y)
+            let v = Rect(x: x0, y: y0, w: min(seen.x + seen.w, p.x + p.w) - x0, h: min(seen.y + seen.h, p.y + p.h) - y0)
             // Fixed slots: 4 rows of bichitos, each tall enough for bubble + sprite + name, clear of the status bar,
             // then a row for the egg and the note, above the tray.
             func at(_ fx: Double, _ row: Int) -> Vec {
@@ -64,6 +67,14 @@ enum Terrarium {
             }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
+            if CommandLine.arguments.contains("-screenshot-news") { // NewsFeed (#51): stories of different ages, oldest first
+                let b = w.bichitos.map(\.id)
+                for k in 0..<14 { w.news.add(.fought(b[4], b[5]), date: w.date - 3600 + Double(k * 60), place: at(0.5, 0)) }
+                w.news.add(.fellInLove(b[2], b[3]), date: w.date - 720, place: mid)
+                w.news.add(.escaped(ghost.id), date: w.date - 300, place: ghost.pos)
+                w.news.add(.eggLaid(b[2], b[3]), date: w.date - 120, place: mid)
+                w.news.add(.hatched(b[6]), date: w.date - 10, place: at(0.73, 2))
+            }
         }
     }
 

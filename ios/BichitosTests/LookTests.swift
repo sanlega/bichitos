@@ -26,8 +26,70 @@ final class LookTests: XCTestCase {
 
     func testBubbles() {
         XCTAssertNil(Look.bubble(mood: .wander, needs: fed, dizzy: 0))
-        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0), "💤")
-        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 2), "💫")
+        XCTAssertEqual(Look.bubble(mood: .sleep, needs: fed, dizzy: 0), .zzz)
+        XCTAssertEqual(Look.bubble(mood: .wander, needs: fed, dizzy: 2), .dizzy)
+    }
+
+    func testEveryMoodMapsToAnIcon() {
+        let cases: [(Bichito.Mood, Look.Icon?)] = [
+            (.wander, nil), (.sleep, .zzz), (.eat, .hunger), (.love, .heart), (.fight, .anger), (.chase, nil),
+            (.flee, .sweat), (.imitate, nil), (.scared, .alert), (.happy, .note), (.held, nil), (.incubating, .egg),
+        ]
+        var starving = fed
+        starving.hunger = 0.1
+        for (mood, icon) in cases {
+            XCTAssertEqual(Look.bubble(mood: mood, needs: fed, dizzy: 0), icon, mood.rawValue)
+            XCTAssertNotNil(Look.bubble(mood: mood, needs: starving, dizzy: 0), "\(mood.rawValue) hungry")
+            XCTAssertEqual(Look.bubble(mood: mood, needs: fed, dizzy: 1), .dizzy, mood.rawValue)
+        }
+        let used = Set(cases.compactMap(\.1) + [.dizzy, .suitcase])
+        XCTAssertEqual(used, Set(Look.Icon.allCases), "every icon is drawn for some state")
+    }
+
+    /// 12×12, only palette digits, no lone pixels, and a closed 1 px outline: anything but outline is surrounded.
+    func testIconGridsAreValid() {
+        let n = Look.Icon.canvas
+        for icon in Look.Icon.allCases {
+            let art = icon.art, g = icon.grid
+            XCTAssertEqual(art.count, n, icon.rawValue)
+            for row in art {
+                XCTAssertEqual(row.count, n, icon.rawValue)
+                XCTAssertTrue(row.allSatisfy { ".12346".contains($0) }, "\(icon.rawValue): \(row)")
+            }
+            XCTAssertTrue((0..<n).contains { g[$0, n - 1] != 0 }, "\(icon.rawValue) rests on the bottom row")
+            for y in 0..<n {
+                for x in 0..<n where g[x, y] != 0 {
+                    let around = [(1, 0), (-1, 0), (0, 1), (0, -1)].map { g[x + $0.0, y + $0.1] }
+                    XCTAssertTrue(around.contains { $0 != 0 }, "\(icon.rawValue): orphan at \(x),\(y)")
+                    guard g[x, y] != 1 else { continue }
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            XCTAssertTrue(g.contains(x + dx, y + dy) && g[x + dx, y + dy] != 0,
+                                          "\(icon.rawValue): unoutlined pixel at \(x),\(y)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testIconTexturesAreCrispAndTheHeartTakesTheAccent() {
+        let cache = Sprites()
+        let a = Palette.all[0].colors[5], b = Palette.all[5].colors[5]
+        let zzz = cache.texture(.zzz, accent: a)
+        XCTAssertTrue(zzz === cache.texture(.zzz, accent: b), "only the heart depends on the bichito")
+        XCTAssertEqual(zzz.filteringMode, .nearest)
+        XCTAssertEqual(zzz.size(), CGSize(width: Look.Icon.canvas, height: Look.Icon.canvas), "no shadow row")
+        XCTAssertFalse(cache.texture(.heart, accent: a) === cache.texture(.heart, accent: b))
+        XCTAssertEqual(Look.Icon.heart.palette(accent: a).colors[3], a)
+    }
+
+    func testNoEmojiLeftInLook() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Bichitos/Look.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let emoji = text.unicodeScalars.filter { $0.properties.isEmoji && $0.value > 0x7F }
+        XCTAssertTrue(emoji.isEmpty, "emoji in Look.swift: \(String(String.UnicodeScalarView(emoji)))")
     }
 
     func testQuantisation() {

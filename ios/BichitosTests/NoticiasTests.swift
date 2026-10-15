@@ -82,4 +82,35 @@ final class NoticiasTests: XCTestCase {
         XCTAssertEqual(old.news.items, [])
         XCTAssertEqual(old.bichitos.map(\.id), w.bichitos.map(\.id))
     }
+    func testFeedIsNewestFirst() {
+        var n = News()
+        n.add(.fought(1, 2), date: start, place: .zero)
+        n.add(.hatched(3), date: start + 10, place: .zero)
+        n.add(.escaped(4), date: start + 20, place: .zero)
+        n.add(.fought(2, 1), date: start + 30, place: .zero) // a repeat jumps back to the top
+        XCTAssertEqual(n.items.map(\.event), [.fought(1, 2), .escaped(4), .hatched(3)])
+        XCTAssertEqual(n.items.map(\.date), n.items.map(\.date).sorted(by: >))
+    }
+
+    func testRelativeTime() {
+        func ago(_ s: Double, _ l: Language) -> String { News.ago(start - s, now: start, l) }
+        XCTAssertEqual(ago(0, .es), "ahora")
+        XCTAssertEqual(ago(59, .en), "just now")
+        XCTAssertEqual(ago(-5, .es), "ahora", "a story from the future is just now")
+        XCTAssertEqual(ago(180, .es), "hace 3 min")
+        XCTAssertEqual(ago(180, .en), "3 min ago")
+        XCTAssertEqual(ago(3599, .es), "hace 59 min")
+        XCTAssertEqual(ago(7200, .es), "hace 2 h")
+        XCTAssertEqual(ago(3 * 86400, .en), "3 d ago")
+    }
+
+    func testToastTravelsToItsStory() {
+        var n = News()
+        n.add(.fellInLove(5, 2), date: start, place: Vec(10, 20))
+        n.add(.hatched(7), date: start + 1, place: Vec(30, 40))
+        n.add(.fellInLove(2, 5), date: start + 2, place: Vec(50, 60))
+        XCTAssertEqual(n.place(of: .fellInLove(5, 2)), Vec(50, 60), "either order, latest place")
+        XCTAssertEqual(n.place(of: .hatched(7)), Vec(30, 40))
+        XCTAssertNil(n.place(of: .escaped(9)))
+    }
 }

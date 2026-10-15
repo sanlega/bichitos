@@ -11,6 +11,33 @@ struct WorldView: View {
     @State private var card: Int? // id of the bichito whose card is open
     @State private var peek: Int? // id of the bichito whose peek is up
     @State private var picking = false // BarrioPicker is open
+    @State private var reading = false // NewsFeed is open
+
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+
+    /// VoiceOver: an element over each bichito on screen, with the gestures as actions (DESIGN.md Accesibilidad).
+    /// Re-read every second, like `BichitoPeek`: the world is not observable.
+    private var bichitoElements: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            ZStack {
+                ForEach(scene.onScreen) { b in
+                    Rectangle().fill(Color.clear)
+                        .frame(width: b.frame.width, height: b.frame.height)
+                        .position(x: b.frame.midX, y: b.frame.midY)
+                        .accessibilityElement()
+                        .accessibilityLabel(b.label)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { peek = b.id }
+                        .accessibilityAction(named: "Acariciar") { scene.pet(b.id) }
+                        .accessibilityAction(named: "Lanzar") { scene.toss(b.id) }
+                        .accessibilityAction(named: "Ficha") { card = b.id }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .ignoresSafeArea() // same space as the SpriteView
+        .allowsHitTesting(false) // touches still reach the map
+    }
 
     var body: some View {
         ZStack {
@@ -19,6 +46,7 @@ struct WorldView: View {
                 .sheet(isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } })) {
                     if let card { BichitoCard(scene: scene, id: card) }
                 }
+            if voiceOver { bichitoElements }
             VStack(alignment: .leading, spacing: 8) {
                 BarrioPill(scene: scene) { picking = true }
                 if let event = scene.toast {
@@ -41,6 +69,7 @@ struct WorldView: View {
             .padding(.top, 8)
             .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             .sheet(isPresented: $picking) { BarrioPicker(scene: scene) { picking = false } }
+            .sheet(isPresented: $reading) { NewsFeed(scene: scene) { reading = false } }
             if foodMode {
                 // Food mode marks the screen edge (DESIGN.md "Modos").
                 Rectangle().strokeBorder(Color.accent, lineWidth: 3)
@@ -59,7 +88,7 @@ struct WorldView: View {
                             .padding(.horizontal, 16)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
+                    Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true }, news: { reading = true })
                         .padding(.bottom, 16)
                 }
             }
@@ -77,9 +106,16 @@ struct WorldView: View {
         .onAppear {
             scene.onLongPress = { card = $0 }
             scene.onPeek = { peek = $0 }
+            scene.onToastTap = { event in
+                if let place = scene.world.news.place(of: event) { scene.travel(to: place) }
+                reading = false
+            }
             if CommandLine.arguments.contains("-screenshot-editor") { creating = true }
             if CommandLine.arguments.contains("-screenshot-barrios") { // after the staged world is populated
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true }
+            }
+            if CommandLine.arguments.contains("-screenshot-news") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { reading = true }
             }
             if CommandLine.arguments.contains("-screenshot-food") { foodMode = true; foodKind = .croqueta }
             if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
@@ -93,11 +129,13 @@ struct WorldView: View {
     }
 }
 
-/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons with the principal one in the centre.
+/// DESIGN.md `Tray`: floating `card`, radius 20, icon buttons in the order «comida susto (+) noti mapa»;
+/// the principal one sits in the centre once the map button (5th) lands.
 struct Tray: View {
     @Binding var foodMode: Bool
     var scare: () -> Void
     var add: () -> Void
+    var news: () -> Void
 
     var body: some View {
         HStack(spacing: 16) {
@@ -105,12 +143,15 @@ struct Tray: View {
                 .buttonStyle(IconButtonStyle(background: foodMode ? Color.accent : Color.fill))
                 .accessibilityLabel("Modo comida")
                 .accessibilityAddTraits(foodMode ? .isSelected : [])
-            Button(action: add) { Image(systemName: "plus") }
-                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
-                .accessibilityLabel("Nuevo bichito")
             Button(action: scare) { Image(systemName: "bolt.fill") }
                 .buttonStyle(IconButtonStyle())
                 .accessibilityLabel("Asustar")
+            Button(action: add) { Image(systemName: "plus") }
+                .buttonStyle(IconButtonStyle(background: Color.accent, size: 56))
+                .accessibilityLabel("Nuevo bichito")
+            Button(action: news) { Image(systemName: "newspaper.fill") }
+                .buttonStyle(IconButtonStyle())
+                .accessibilityLabel("Noticias")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
@@ -126,5 +167,31 @@ extension UIWindow {
     override open func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
         if motion == .motionShake { NotificationCenter.default.post(name: .deviceDidShake, object: nil) }
         super.motionEnded(motion, with: event)
+    }
+}
+
+extension Bichito {
+    /// What VoiceOver says: name and current state, «Pocholo, durmiendo, con hambre».
+    var voiceLabel: String {
+        let state: String
+        switch mood {
+        case .wander: state = "paseando"
+        case .sleep: state = "durmiendo"
+        case .eat: state = "comiendo"
+        case .love: state = "enamorado"
+        case .fight: state = "peleando"
+        case .chase: state = "persiguiendo a alguien"
+        case .flee: state = "huyendo"
+        case .imitate: state = "imitando a alguien"
+        case .scared: state = "asustado"
+        case .happy: state = "contento"
+        case .held: state = "en tu mano"
+        case .incubating: state = "incubando"
+        }
+        var parts = [name, dizzy > 0 ? "mareado" : state]
+        if needs.hunger < 0.3 { parts.append("con hambre") }
+        if needs.sleep < 0.3 { parts.append("con sueño") }
+        if needs.affection < 0.3 { parts.append("quiere mimos") }
+        return parts.joined(separator: ", ")
     }
 }

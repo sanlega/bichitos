@@ -4,10 +4,11 @@ import Foundation
 /// screen points (y down). Pure, so pan and pinch maths is tested without SpriteKit.
 struct Camera: Equatable {
     /// The four zoom levels of DESIGN.md: points per `u` (one sprite pixel) once the pinch settles.
+    /// Mapa is 0.28 so the whole ring (2560×1984 world units) fits a 375 pt wide phone.
     enum Level: Int, CaseIterable {
         case map, district, street, close
 
-        var scale: Double { [1, 3, 5, 8][rawValue] }
+        var scale: Double { [0.28, 3, 5, 8][rawValue] }
 
         /// What goes over the bichitos (DESIGN.md "Zoom"): nothing on the map, the state icon from Barrio,
         /// names and phrase bubbles too from Calle.

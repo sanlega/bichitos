@@ -26,6 +26,65 @@ final class GestureTests: XCTestCase {
         XCTAssertEqual(drag.tapAction, .none)
     }
 
+    /// Feeds a path of x positions (y fixed) one sample every `dt`; returns every action that came out.
+    private func run(_ t: inout Touch, _ xs: [Double], dt: Double = 0.03) -> [Touch.Action] {
+        xs.enumerated().map { k, x in t.move(to: Vec(100 + x, 100), time: Double(k + 1) * dt) }.filter { $0 != .none }
+    }
+
+    func testRubbingBackAndForthPetsAndNeverGrabs() {
+        var t = Touch(at: Vec(100, 100), time: 0, target: 4, foodMode: false, reach: 40)
+        let strokes: [Double] = [8, 16, 24, 16, 8, 0, -8, 0, 8, 16, 24, 16, 8, 0, -8, 0, 8, 16, 24, 16, 8, 0, -8, 0]
+        let actions = run(&t, strokes)
+        XCTAssertTrue(t.isRub)
+        XCTAssertFalse(t.isDrag)
+        XCTAssertGreaterThan(actions.count, 1, "repeated pets while rubbing")
+        XCTAssertTrue(actions.allSatisfy { $0 == .rub(4) }, "\(actions)")
+        XCTAssertEqual(t.move(to: Vec(200, 100), time: 1), .none, "a rub leaving the bichito doesn't turn into a grab")
+        XCTAssertEqual(t.tapAction, .none, "a rub is not a tap")
+    }
+
+    func testOneWayDragOnABichitoGrabsOnceItLeavesItsReach() {
+        var t = Touch(at: Vec(100, 100), time: 0, target: 4, foodMode: false, reach: 40)
+        XCTAssertEqual(run(&t, [10, 20, 30, 40, 50, 60]), [.grab(4)])
+        XCTAssertFalse(t.isRub)
+        XCTAssertTrue(t.isDrag)
+    }
+
+    func testSlowOrJitteryBackAndForthIsNotARub() {
+        var jitter = Touch(at: Vec(100, 100), time: 0, target: 4, foodMode: false, reach: 40)
+        XCTAssertEqual(run(&jitter, [3, -3, 3, -3, 3, -3, 3]), [], "strokes under rubStroke are jitter")
+        XCTAssertFalse(jitter.isRub)
+        var slow = Touch(at: Vec(100, 100), time: 0, target: 4, foodMode: false, reach: 40)
+        XCTAssertEqual(run(&slow, [20, 0, 20], dt: 1), [], "reversals further apart than rubWindow")
+        XCTAssertFalse(slow.isRub)
+        XCTAssertEqual(slow.tapAction, .none, "it moved, so lifting isn't a tap either")
+    }
+
+    func testTossStaysOnTheMap() {
+        var w = World(seed: 5)
+        var rng = SeededRNG(seed: 5)
+        let corner = Vec(w.bounds.x + 20, w.bounds.y + 20)
+        let ids = (0..<6).map { _ in w.add(Recipe.random(using: &rng), at: corner) }
+        w.visibleRect = w.bounds
+        for _ in 0..<5 {
+            for id in ids { w.toss(id, using: &rng) }
+            XCTAssertTrue(ids.allSatisfy { (w.bichito($0)?.dizzy ?? 0) > 2 }, "a toss is a real throw")
+            for _ in 0..<60 { w.tick() }
+            for b in w.bichitos { XCTAssertTrue(w.bounds.contains(b.pos), "\(b.pos) left \(w.bounds)") }
+        }
+    }
+
+    func testVoiceLabelSaysNameAndState() {
+        var w = World(seed: 6)
+        var rng = SeededRNG(seed: 6)
+        let id = w.add(Recipe.random(using: &rng), at: Vec(300, 300), name: "Pocholo")
+        var b = try! XCTUnwrap(w.bichito(id))
+        b.mood = .sleep
+        b.dizzy = 0
+        b.needs = .init(hunger: 0.1, sleep: 1, affection: 1)
+        XCTAssertEqual(b.voiceLabel, "Pocholo, durmiendo, con hambre")
+    }
+
     func testFollowHoldsUntilThePanAndStopsWhenItIsGone() {
         var w = World(seed: 3)
         var rng = SeededRNG(seed: 3)
