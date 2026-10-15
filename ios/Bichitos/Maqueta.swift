@@ -94,7 +94,7 @@ enum Maqueta {
             face = f; side = s; roof = r
             base = Maqueta.shade(s, 0.94)
             roofSide = Maqueta.shade(r, 0.92)
-            dark = Maqueta.alpha(Maqueta.ink, 0.7)
+            dark = Maqueta.alpha(Maqueta.ink, 0.55) // DESIGN.md says 70%: in the captures it outshouted the bichitos
             flag = Maqueta.mix(Maqueta.mist, tint, 0.75)
         }
     }
@@ -222,11 +222,11 @@ enum Maqueta {
             return join([shadow(4, 108, w - 16, 20)], body(Rect(x: 8, y: 76, w: w - 16, h: 44), 16, t.face, t.side), [
                 Shape(form: .oval(Rect(x: 10, y: 62, w: w - 20, h: 30)), color: t.face),
                 Shape(form: .oval(Rect(x: 22, y: 66, w: w - 44, h: 22)), color: water),
-            ], body(Rect(x: c - 12, y: 34, w: 24, h: 44), 8, t.face, t.side), [
-                Shape(form: .box(Rect(x: c - 40, y: 26, w: 80, h: 16), radius: 8), color: t.roof),
-                Shape(form: .oval(Rect(x: c - 10, y: 0, w: 20, h: 30)), color: water),
-                Shape(form: .oval(Rect(x: c - 38, y: 10, w: 10, h: 10)), color: waterEdge),
-                Shape(form: .oval(Rect(x: c + 28, y: 10, w: 10, h: 10)), color: waterEdge),
+            ], body(Rect(x: c - 12, y: 54, w: 24, h: 26), 8, t.face, t.side), [
+                Shape(form: .box(Rect(x: c - 36, y: 46, w: 72, h: 16), radius: 8), color: t.roof),
+                Shape(form: .box(Rect(x: c - 8, y: 24, w: 16, h: 28), radius: 8), color: water),
+                Shape(form: .oval(Rect(x: c - 26, y: 32, w: 8, h: 8)), color: waterEdge),
+                Shape(form: .oval(Rect(x: c + 18, y: 32, w: 8, h: 8)), color: waterEdge),
             ])
         case .telescope:
             let a = Vec(c - 52, 66), b = Vec(c + 44, 14), d = (b - a).unit
@@ -342,10 +342,10 @@ enum Maqueta {
 
     /// 8×40 u: a pole on a foot, with its lamp on top.
     private static func lamp(lit: Bool) -> [Shape] {
-        let pole = shade(rock, 0.86)
+        let pole = shade(rock, 0.92)
         return [shadow(0, 72, 16, 8),
-                Shape(form: .line([Vec(8, 74), Vec(8, 12)], width: 6), color: pole),
-                Shape(form: .box(Rect(x: 0, y: 66, w: 16, h: 16), radius: 8), color: pole),
+                Shape(form: .line([Vec(8, 74), Vec(8, 12)], width: 4), color: pole),
+                Shape(form: .oval(Rect(x: 2, y: 70, w: 12, h: 8)), color: pole),
                 Shape(form: .oval(Rect(x: 0, y: 0, w: 16, h: 16)), color: lit ? warmLight : card)]
     }
 }

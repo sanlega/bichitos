@@ -73,6 +73,7 @@ enum Terrarium {
                 w.bichitos[i].pos = door
                 w.bichitos[i].home = c.id
                 w.bichitos[i].calm = 600
+                w.bichitos[i].needs.sleep = 0.1 // a full one wakes up
                 w.bichitos[i].enter(.sleep, for: 600)
             }
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
