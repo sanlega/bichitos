@@ -7,8 +7,7 @@ final class NocheTests: XCTestCase {
 
     /// 14 bichitos all in Plaza Mayor, 2 per casita.
     private func world(at hour: Double, seed: UInt64 = 4, count: Int = 14) -> World {
-        var w = World(seed: seed, date: midnight + hour * 3600)
-        w.timeZone = utc
+        var w = World(testSeed: seed, date: midnight + hour * 3600, timeZone: utc)
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count { w.add(Recipe.random(using: &rng)) }
         return w

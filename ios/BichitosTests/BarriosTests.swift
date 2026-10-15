@@ -17,7 +17,7 @@ final class BarriosTests: XCTestCase {
     }
 
     func testDistrictsStopAtSeven() {
-        var w = World(seed: 2, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var w = World(testSeed: 2, date: Date(timeIntervalSince1970: 1_700_000_000))
         var rng = SeededRNG(seed: 2)
         for _ in 0..<110 { w.add(Recipe.random(using: &rng)) }
         XCTAssertEqual(w.districts.count, 7)
@@ -41,7 +41,7 @@ final class BarriosTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(World(seed: 5).districts[0].rect, World.layout(seed: 5)[0])
+        XCTAssertEqual(World(testSeed: 5).districts[0].rect, World.layout(seed: 5)[0])
     }
 
     private func recipe(_ p: Recipe.Personality, _ seed: UInt64) -> Recipe {
@@ -52,7 +52,7 @@ final class BarriosTests: XCTestCase {
     }
 
     func testMostlyTerritorialPopulationOpensLasEsquinas() {
-        var w = World(seed: 4)
+        var w = World(testSeed: 4)
         let others = Recipe.Personality.allCases.filter { $0 != .territorial }
         for k in 0..<World.capacity { w.add(recipe(k < 9 ? .territorial : others[k % others.count], UInt64(k))) }
         let plaza = w.bounds
@@ -68,7 +68,7 @@ final class BarriosTests: XCTestCase {
     }
 
     func testNobodyAffineStillOpensForRoom() {
-        var w = World(seed: 4)
+        var w = World(testSeed: 4)
         for k in 0...World.capacity { w.add(recipe(.territorial, UInt64(k))) }
         XCTAssertEqual(w.districts.last?.name(.es), "Las Esquinas")
         while w.districts.count < 3 { w.add(recipe(.territorial, 999)) } // no other territorial district left
@@ -81,10 +81,10 @@ final class BarriosTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let pen = Pen(url: dir.appendingPathComponent("pen.json"))
+        let pen = Pen(url: dir.appendingPathComponent("pen.json"), timeZone: World.daytime)
         let start = Date(timeIntervalSince1970: 1_700_000_000)
 
-        var w = World(seed: 9, date: start)
+        var w = World(testSeed: 9, date: start)
         var rng = SeededRNG(seed: 9)
         for _ in 0..<20 { w.add(Recipe.random(using: &rng)) }
         try pen.save(w, at: start)
@@ -135,7 +135,7 @@ final class BarriosTests: XCTestCase {
     // MARK: - Emigration
 
     private func world(seed: UInt64, count: Int, all personality: Recipe.Personality? = nil) -> World {
-        var w = World(seed: seed, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var w = World(testSeed: seed, date: Date(timeIntervalSince1970: 1_700_000_000))
         var rng = SeededRNG(seed: seed)
         for _ in 0..<count {
             var r = Recipe.random(using: &rng)
@@ -187,7 +187,7 @@ final class BarriosTests: XCTestCase {
 
     /// BarrioPicker: every district, open ones with their population, locked ones with how many bichitos they still need.
     func testPickerRows() {
-        var w = World(seed: 3, date: Date(timeIntervalSince1970: 1_700_000_000))
+        var w = World(testSeed: 3, date: Date(timeIntervalSince1970: 1_700_000_000))
         XCTAssertEqual(w.barrioRows.map(\.place), [0, nil, nil, nil, nil, nil, nil])
         XCTAssertEqual(w.bichitosToNextDistrict, 15)
         var rng = SeededRNG(seed: 3)

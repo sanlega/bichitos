@@ -14,9 +14,13 @@ struct Pen {
     }
 
     let url: URL
+    /// The clock the loaded world runs on (`World.timeZone` is never saved): the device's, or a test's.
+    let timeZone: TimeZone
 
-    init(url: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("pen.json")) {
+    init(url: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("pen.json"),
+         timeZone: TimeZone = .current) {
         self.url = url
+        self.timeZone = timeZone
     }
 
     func save(_ world: World, at date: Date = Date()) throws {
@@ -27,6 +31,7 @@ struct Pen {
     func load() throws -> Saved? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         var saved = try JSONDecoder().decode(Saved.self, from: Data(contentsOf: url))
+        saved.world.timeZone = timeZone
         saved.world.fitDistricts()
         saved.world.fitHomes()
         return saved
