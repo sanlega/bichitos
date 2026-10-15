@@ -4,17 +4,17 @@ import XCTest
 @MainActor
 final class SettingsTests: XCTestCase {
     private var suite: UserDefaults!
-    private let name = "SettingsTests"
+    private let domain = "SettingsTests"
 
     override func setUp() async throws {
-        UserDefaults().removePersistentDomain(forName: name)
-        suite = UserDefaults(suiteName: name)
+        UserDefaults().removePersistentDomain(forName: domain)
+        suite = UserDefaults(suiteName: domain)
         Settings.store = suite
     }
 
     override func tearDown() async throws {
         Settings.store = .standard
-        suite.removePersistentDomain(forName: name)
+        suite.removePersistentDomain(forName: domain)
     }
 
     func testVoiceAndHapticsStartOnAndAreKeptSeparately() {
@@ -27,8 +27,8 @@ final class SettingsTests: XCTestCase {
         Settings.voice = true
         XCTAssertFalse(Settings.haptics)
         // Same keys the sheet's @AppStorage writes, read back from a fresh handle on the same store.
-        XCTAssertEqual(UserDefaults(suiteName: name)?.object(forKey: Settings.hapticsKey) as? Bool, false)
-        XCTAssertEqual(UserDefaults(suiteName: name)?.object(forKey: Settings.voiceKey) as? Bool, true)
+        XCTAssertEqual(UserDefaults(suiteName: domain)?.object(forKey: Settings.hapticsKey) as? Bool, false)
+        XCTAssertEqual(UserDefaults(suiteName: domain)?.object(forKey: Settings.voiceKey) as? Bool, true)
     }
 
     func testHapticsRespectTheToggle() {
