@@ -37,11 +37,15 @@ final class WorldScene: SKScene, ObservableObject {
 
     private var lens: Camera
     private var pinchFrom = 3.0
-    /// Each district's ground (`Ground`), with its name near the top and its water reflections.
+    /// Each district's ground (`Ground`) and its water reflections.
     private var districtNodes: [SKSpriteNode] = []
     private var glintNodes: [[(node: SKSpriteNode, at: Vec)]] = []
-    /// Painted ground by district and zoom level; dropped when a district opens (the paths change).
+    /// Painted ground, only what `Ground.keep` says (#84); painted off the main thread, `painting` meanwhile.
     private var groundTextures: [Ground.Key: SKTexture] = [:]
+    private var kept: Set<Ground.Key> = []
+    private var painting: Set<Ground.Key> = []
+    /// A tiny plain ground per district, shown until its painted one is ready.
+    private var placeholders: [Ground.Key: SKTexture] = [:]
     /// Zoom level the camera is at (or springing to), for what each level shows.
     var level: Camera.Level { lens.level }
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
@@ -69,6 +73,7 @@ final class WorldScene: SKScene, ObservableObject {
     private var walls: [CGRect] = []
     private let mapLayer = SKNode()
     private var mapKey = ""
+    private var mapShown = false // where `mapLayer` is fading to
     /// Tray toggle: a tap on the ground drops food.
     var foodMode = false
     var foodKind = Food.Kind.fruta
@@ -90,6 +95,28 @@ final class WorldScene: SKScene, ObservableObject {
         scaleMode = .resizeFill
         anchorPoint = .zero
         backgroundColor = Ink.mist
+        NotificationCenter.default.addObserver(self, selector: #selector(memoryWarning), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+    }
+
+    /// Low memory: every ground texture goes; the next frame paints again only what is on screen.
+    @objc private func memoryWarning() {
+        groundTextures = [:]
+        placeholders = [:]
+        for patch in districtNodes { patch.texture = nil }
+    }
+
+    /// Paints the ground in the background; the texture is made back on the main thread, if still wanted.
+    private func paint(_ key: Ground.Key) {
+        painting.insert(key)
+        let terrain = world.terrain
+        DispatchQueue.global(qos: .userInitiated).async {
+            let image = Ground.paint(key, terrain)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                painting.remove(key)
+                if kept.contains(key) { groundTextures[key] = SKTexture(cgImage: image) }
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -109,7 +136,7 @@ final class WorldScene: SKScene, ObservableObject {
             let start = UserDefaults.standard.double(forKey: "screenshot-zoom")
             lens.scale = Camera.Level.nearest(start > 0 ? start : max(3, Double(Int(min(size.width, size.height) / 140)))).scale
         }
-        if mapLayer.parent == nil { mapLayer.zPosition = -50; addChild(mapLayer) }
+        if mapLayer.parent == nil { mapLayer.zPosition = -50; mapLayer.alpha = 0; mapLayer.isHidden = true; addChild(mapLayer) }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -343,22 +370,13 @@ final class WorldScene: SKScene, ObservableObject {
         for (n, r) in zip(named, names) { n.placeName(r) }
     }
 
-    /// Each district is its painted ground with its name near the top; the Mapa level draws blobs instead (`drawMap`).
+    /// Each district is its painted ground (its name shows only on the Mapa level); the Mapa level draws blobs instead (`drawMap`).
     private func drawDistricts() {
         while districtNodes.count < world.districts.count {
             let d = world.districts[districtNodes.count]
             let patch = SKSpriteNode() // its texture comes before any size
             patch.anchorPoint = CGPoint(x: 0, y: 1)
             patch.zPosition = -100
-            let font = UIFont.systemFont(ofSize: 28, weight: .heavy)
-            let label = SKLabelNode()
-            label.attributedText = NSAttributedString(string: d.name(world.language), attributes: [
-                .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 28),
-                .foregroundColor: Ink.ink.withAlphaComponent(0.18),
-            ])
-            label.verticalAlignmentMode = .top
-            label.zPosition = 2
-            patch.addChild(label)
             // Two reflections on the water, fading in and out every 4 s, half a cycle apart.
             let glints = Ground.glints(world.terrain, in: d.rect).enumerated().map { k, p in
                 let g = SKSpriteNode(texture: Ground.glint)
@@ -374,22 +392,34 @@ final class WorldScene: SKScene, ObservableObject {
             addChild(patch)
             districtNodes.append(patch)
         }
-        mapLayer.isHidden = level != .map
-        if level == .map { drawMap() }
-        let open = world.districts.map(\.index).sorted(), still = UIAccessibility.isReduceMotionEnabled
+        // #83: the Mapa layer (names, blobs, locked outlines) fades in and out as a pinch crosses the threshold.
+        let onMap = level == .map
+        if onMap != mapShown {
+            mapShown = onMap
+            mapLayer.removeAction(forKey: "fade")
+            let t = UIAccessibility.isReduceMotionEnabled ? 0 : 0.2
+            if onMap { mapLayer.isHidden = false }
+            mapLayer.run(onMap ? .fadeIn(withDuration: t) : .sequence([.fadeOut(withDuration: t), .hide()]), withKey: "fade")
+        }
+        if !mapLayer.isHidden { drawMap() }
+        let seed = world.layoutSeed ?? 0, still = UIAccessibility.isReduceMotionEnabled
+        kept = Ground.keep(lens.rect(screenSize), here: here, world.districts, seed: seed, level: level)
+        groundTextures = groundTextures.filter { kept.contains($0.key) }
+        for key in kept where groundTextures[key] == nil && !painting.contains(key) { paint(key) }
         for (k, patch) in districtNodes.enumerated() {
+            let index = world.districts[k].index, wanted = kept.first { $0.district == index }
+            if let wanted, let t = groundTextures[wanted] {
+                if patch.texture !== t { patch.texture = t }
+            } else if wanted == nil || patch.texture == nil { // a texture on its way keeps the last one up meanwhile
+                let plain = Ground.Key(seed: seed, district: index, open: [], texel: 1.0 / 8)
+                if placeholders[plain] == nil { placeholders[plain] = SKTexture(cgImage: Ground.paint(plain, world.terrain, plain: true)) }
+                if patch.texture !== placeholders[plain] { patch.texture = placeholders[plain] }
+            }
             patch.isHidden = level == .map
             guard level != .map else { continue }
-            let key = Ground.Key(seed: world.layoutSeed ?? 0, district: world.districts[k].index, open: open, texel: Ground.texel(level))
-            if groundTextures[key] == nil {
-                groundTextures = groundTextures.filter { $0.key.open == open }
-                groundTextures[key] = Ground.paint(key, world.terrain)
-            }
-            if patch.texture !== groundTextures[key] { patch.texture = groundTextures[key] }
             let f = Ground.frame(world.districts[k].rect)
             patch.position = screen(Vec(f.x, f.y))
             patch.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
-            patch.children.first?.position = CGPoint(x: patch.size.width / 2, y: -CGFloat(Ground.margin) * unit - 60)
             for g in glintNodes[k] {
                 g.node.isHidden = still // Reduce Motion: no reflections
                 g.node.position = CGPoint(x: CGFloat(g.at.x - f.x) * unit, y: -CGFloat(g.at.y - f.y) * unit)
