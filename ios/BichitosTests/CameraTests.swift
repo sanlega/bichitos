@@ -31,23 +31,26 @@ final class CameraTests: XCTestCase {
         var c = Camera(center: Vec(500, 800), pixel: 4) // 2 points per world unit
         c.pan(by: Vec(-100, 40))
         XCTAssertEqual(c.center, Vec(550, 780))
-        let map = Vec(2000, 1600)
+        let map = Rect(x: -1000, y: -400, w: 2000, h: 1600) // the ring reaches left of and above Plaza Mayor
         c.pan(by: Vec(-100_000, 0))
         c.clamp(to: map, screen)
-        XCTAssertEqual(c.rect(screen).x + c.rect(screen).w, 2000, accuracy: 1e-9)
+        XCTAssertEqual(c.rect(screen).x + c.rect(screen).w, 1000, accuracy: 1e-9)
         c.pan(by: Vec(0, 100_000))
         c.clamp(to: map, screen)
-        XCTAssertEqual(c.rect(screen).y, 0, accuracy: 1e-9)
+        XCTAssertEqual(c.rect(screen).y, -400, accuracy: 1e-9)
         var wide = Camera(center: .zero, pixel: 3)
-        wide.clamp(to: Vec(200, 1600), screen) // map narrower than the screen: centred
-        XCTAssertEqual(wide.center.x, 100)
+        wide.clamp(to: Rect(x: -300, y: 0, w: 200, h: 1600), screen) // map narrower than the screen: centred
+        XCTAssertEqual(wide.center.x, -200)
     }
 
     func testDistrictUnderAPoint() {
         var w = World(seed: 1)
-        XCTAssertEqual(w.district(at: Vec(1500, 10)), 0, "locked districts don't count")
-        w.districts.append(District(index: 1))
-        XCTAssertEqual(w.district(at: Vec(1500, 10)), 1)
+        let right = try! XCTUnwrap(w.layout.firstIndex { $0.y == 0 && $0.x > 0 })
+        let there = w.layout[right].center, gap = Vec(World.districtSize.x + 10, 100)
+        XCTAssertEqual(w.district(at: there), 0, "locked districts don't count")
+        w.unlock(right)
+        XCTAssertEqual(w.district(at: there), 1)
+        XCTAssertEqual(w.district(at: gap), 0, "in the mist, the closest one")
         XCTAssertEqual(w.district(at: Vec(-5, 10)), 0)
     }
 

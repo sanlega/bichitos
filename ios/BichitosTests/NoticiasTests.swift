@@ -44,7 +44,7 @@ final class NoticiasTests: XCTestCase {
         var rng = SeededRNG(seed: 3)
         for _ in 0...World.capacity { w.add(Recipe.random(using: &rng)) } // one too many: opens district 1
         let item = w.news.items.first
-        XCTAssertEqual(item?.event, .unlocked(1))
+        XCTAssertEqual(item?.event, .unlocked(1, w.districts[1].theme.affine))
         XCTAssertEqual(item?.place, w.districts[1].rect.center)
         XCTAssertEqual(item?.bichitos, [])
     }
