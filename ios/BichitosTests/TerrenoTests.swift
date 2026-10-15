@@ -230,7 +230,8 @@ final class TerrenoTests: XCTestCase {
         XCTAssertTrue(barrio.contains { $0.district == 0 })
         let left = try XCTUnwrap(layout.firstIndex { $0.x < -800 }), right = try XCTUnwrap(layout.firstIndex { $0.x > 800 })
         XCTAssertFalse(barrio.contains { $0.district == left || $0.district == right }, "too far to the sides")
-        XCTAssertEqual(keep(layout[left].center, .district, [all[0]]).map(\.district), [0], "only open districts")
+        XCTAssertGreaterThan(barrio.count, 1, "the ones above and below")
+        XCTAssertEqual(keep(plaza, .district, [all[0]]).map(\.district), [0], "only open districts")
         for level in [Camera.Level.district, .street, .close] {
             for center in [plaza, layout[left].center, Vec(plaza.x, layout[0].y + layout[0].h + 64)] {
                 let kept = keep(center, level)
