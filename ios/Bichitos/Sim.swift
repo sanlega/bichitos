@@ -577,6 +577,7 @@ struct World: Codable, Equatable {
 
     // MARK: - "Mientras no estabas"
 
+    /// Empty when nothing worth telling happened: then the app shows no summary at all.
     func summary(_ language: Language) -> [String] {
         let es = language == .es
         func name(_ id: Int) -> String {
@@ -609,7 +610,6 @@ struct World: Codable, Equatable {
             }
             if !lines.contains(line) { lines.append(line) }
         }
-        if lines.isEmpty { lines.append(es ? "Todo tranquilo. Demasiado tranquilo." : "All quiet. Too quiet.") }
         return Array(lines.prefix(8))
     }
 }
