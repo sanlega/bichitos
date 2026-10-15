@@ -98,6 +98,8 @@ struct World: Codable, Equatable {
     var notes: [Note] = []
     var districts = [District(index: 0)]
     var events: [WorldEvent] = []
+    /// Events recorded since launch (not saved; the log above is capped): the scene's cursor for live toasts.
+    private(set) var eventTotal = 0
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
     var visibleRect: Rect? = nil
@@ -570,8 +572,9 @@ struct World: Codable, Equatable {
         return nextId - 1
     }
 
-    private mutating func record(_ e: WorldEvent) {
+    mutating func record(_ e: WorldEvent) {
         events.append(e)
+        eventTotal += 1
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
     }
 

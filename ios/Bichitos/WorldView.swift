@@ -20,20 +20,24 @@ struct WorldView: View {
                 Text(scene.title)
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color(Ink.ink))
-                if let news = scene.news {
-                    Text(news)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color(Ink.ink))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(.white).shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4))
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                if let event = scene.toast {
+                    Button { scene.onToastTap?(event) } label: {
+                        Text(scene.world.toastText(event))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color(Ink.ink))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(.white).shadow(color: Color(Ink.ink).opacity(0.08), radius: 8, y: 4))
+                    }
+                    .buttonStyle(.plain)
+                    .id(scene.world.toastText(event)) // a new event slides in fresh instead of morphing the old one
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
             }
             .padding(.top, 8)
-            .allowsHitTesting(false)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.news)
+            .animation(.spring(response: 0.35, dampingFraction: 0.7), value: scene.toast)
             VStack {
                 Spacer()
                 Tray(foodMode: $foodMode, scare: { scene.scareEveryone() }, add: { creating = true })
