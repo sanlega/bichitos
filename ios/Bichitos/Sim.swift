@@ -325,7 +325,8 @@ struct World: Codable, Equatable {
         for i in bichitos.indices where drowsy > bichitos[i].bedtime {
             if let p = bedSpot(for: bichitos[i], ground) { bichitos[i].pos = p }
             bichitos[i].vel = .zero
-            bichitos[i].enter(.sleep, for: roll(60...240))
+            let nap = roll(60...240)
+            bichitos[i].enter(.sleep, for: nap)
         }
     }
 
