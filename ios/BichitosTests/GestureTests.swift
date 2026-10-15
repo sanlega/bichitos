@@ -6,7 +6,7 @@ final class GestureTests: XCTestCase {
         var t = Touch(at: Vec(100, 100), time: 0, target: 7, foodMode: false)
         XCTAssertEqual(t.move(to: Vec(104, 103), time: 0.05), .none, "a little wobble is still a tap")
         XCTAssertFalse(t.isDrag)
-        XCTAssertEqual(t.tapAction, .pet(7))
+        XCTAssertEqual(t.tapAction, .peek(7), "a tap opens the peek, it no longer pets")
     }
 
     func testDragGrabsOnceAndIsNotATap() {
@@ -17,13 +17,32 @@ final class GestureTests: XCTestCase {
         XCTAssertEqual(t.tapAction, .none)
     }
 
-    func testGroundTapFeedsOnlyInFoodMode() {
+    func testGroundTapFeedsInFoodModeAndOtherwiseClosesThePeek() {
         XCTAssertEqual(Touch(at: .zero, time: 0, target: nil, foodMode: true).tapAction, .feed)
-        XCTAssertEqual(Touch(at: .zero, time: 0, target: nil, foodMode: false).tapAction, .none)
-        XCTAssertEqual(Touch(at: .zero, time: 0, target: 3, foodMode: true).tapAction, .pet(3), "a bichito under the finger wins")
+        XCTAssertEqual(Touch(at: .zero, time: 0, target: nil, foodMode: false).tapAction, .close)
+        XCTAssertEqual(Touch(at: .zero, time: 0, target: 3, foodMode: true).tapAction, .peek(3), "a bichito under the finger wins")
         var drag = Touch(at: .zero, time: 0, target: nil, foodMode: true)
-        XCTAssertEqual(drag.move(to: Vec(50, 0), time: 0.1), .none)
+        XCTAssertEqual(drag.move(to: Vec(50, 0), time: 0.1), .pan, "dragging the ground pans")
         XCTAssertEqual(drag.tapAction, .none)
+    }
+
+    func testFollowHoldsUntilThePanAndStopsWhenItIsGone() {
+        var w = World(seed: 3)
+        var rng = SeededRNG(seed: 3)
+        let id = w.add(Recipe.random(using: &rng), at: Vec(300, 400))
+        var f = Follow()
+        XCTAssertNil(f.target(in: w))
+        f.start(id)
+        XCTAssertEqual(f.target(in: w), w.bichito(id)?.pos)
+        for action in [Touch.Action.grab(id), .peek(id), .close, .none] { f.after(action) }
+        XCTAssertEqual(f.id, id, "grabbing or tapping keeps following")
+        f.after(.pan)
+        XCTAssertNil(f.id, "a pan hands the camera back")
+        XCTAssertNil(f.target(in: w))
+        f.start(id)
+        w.bichitos.removeAll()
+        XCTAssertNil(f.target(in: w))
+        XCTAssertNil(f.id, "it ran away: following stops for good")
     }
 
     func testThrowVelocityComesFromTheLastMotion() {

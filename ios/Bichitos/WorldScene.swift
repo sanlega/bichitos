@@ -23,15 +23,18 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Name of the district the camera is looking at, for the title on top.
     @Published private(set) var title = ""
-    /// A short line about something the map just did (a bichito moving out, a new district).
-    @Published private(set) var news: String? = nil
-    private var newsUntil = 0.0
-    private var homes: [Int: Int] = [:]  // bichito → home district, to notice emigrations
-    private var knownDistricts: Int
+    /// The live event on the toast under the title, if any.
+    @Published private(set) var toast: WorldEvent? = nil
+    /// Tapping the toast (#51 takes the camera there).
+    var onToastTap: ((WorldEvent) -> Void)?
+    private var toasts = Toasts()
+    private var seenEvents: Int
 
     private var lens: Camera
-    private var pinchFrom = 3
+    private var pinchFrom = 3.0
     private var districtNodes: [SKSpriteNode] = []
+    /// Zoom level the camera is at (or springing to), for what each level shows.
+    var level: Camera.Level { lens.level }
     /// Points per sprite pixel: always an integer, so every pixel is a whole square on screen.
     private var pixel: CGFloat { CGFloat(lens.pixel) }
     private var unit: CGFloat { CGFloat(lens.unit) }
@@ -53,14 +56,16 @@ final class WorldScene: SKScene, ObservableObject {
     private var finger: UITouch?
     private var grabOffset = Vec.zero
     private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
+    private(set) var follow = Follow()
 
     /// The camera starts on `focus`, or on the centre of the first district.
     init(world: World, focus: Vec? = nil, populate: ((inout World, Rect) -> Void)? = nil) {
         self.world = world
         self.populate = populate
-        lens = Camera(center: focus ?? world.districts[0].rect.center, pixel: Camera.pixels.lowerBound)
-        knownDistricts = world.districts.count
-        homes = Dictionary(world.bichitos.map { ($0.id, $0.district) }, uniquingKeysWith: { a, _ in a })
+        lens = Camera(center: focus ?? world.districts[0].rect.center, scale: Camera.Level.district.scale)
+        seenEvents = world.eventTotal
+        // `-screenshot-toast` (CI): toasts stay up so the capture finds one.
+        if CommandLine.arguments.contains("-screenshot-toast") { toasts.duration = 600 }
         super.init(size: CGSize(width: 1, height: 1))
         scaleMode = .resizeFill
         anchorPoint = .zero
@@ -73,12 +78,17 @@ final class WorldScene: SKScene, ObservableObject {
     func fastForwarded(to world: World) {
         self.world = world
         previous = [:]
+        seenEvents = world.eventTotal // what happened while away goes to the summary, not to toasts
     }
 
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
         guard size.width > 10, size.height > 10 else { return }
-        if oldSize.width <= 10 { lens.pixel = max(Camera.pixels.lowerBound, Int(min(size.width, size.height) / 140)) }
+        if oldSize.width <= 10 {
+            // `-screenshot-zoom 5` (CI) starts at another level.
+            let start = UserDefaults.standard.double(forKey: "screenshot-zoom")
+            lens.scale = Camera.Level.nearest(start > 0 ? start : max(3, Double(Int(min(size.width, size.height) / 140)))).scale
+        }
         fit()
         if let populate, let visible = world.visibleRect {
             populate(&world, visible)
@@ -111,14 +121,26 @@ final class WorldScene: SKScene, ObservableObject {
         longPress = g
     }
 
-    /// Pinch zoom in whole pixel steps, around the fingers.
+    /// Pinch: the map scales smoothly around the fingers; letting go springs it to the nearest level.
     @objc private func pinched(_ g: UIPinchGestureRecognizer) {
-        if g.state == .began { pinchFrom = lens.pixel }
-        guard g.state == .changed, let view else { return }
-        let target = Int((Double(pinchFrom) * Double(g.scale)).rounded())
+        guard let view else { return }
+        let f = g.location(in: view), focus = Vec(Double(f.x), Double(f.y))
+        switch g.state {
+        case .began:
+            lens.grab()
+            pinchFrom = lens.scale
+        case .changed:
+            zoom { $0.zoom(to: pinchFrom * Double(g.scale), around: focus, screenSize) }
+        case .ended, .cancelled, .failed:
+            lens.release(around: focus)
+        default: break
+        }
+    }
+
+    /// Changes the camera; sprites are laid out again only when their whole pixel size changes.
+    private func zoom(_ change: (inout Camera) -> Void) {
         let before = lens.pixel
-        let f = g.location(in: view)
-        lens.zoom(to: target, around: Vec(Double(f.x), Double(f.y)), screenSize)
+        change(&lens)
         fit()
         if lens.pixel != before { relayout() }
     }
@@ -133,6 +155,26 @@ final class WorldScene: SKScene, ObservableObject {
     }
 
     func rename(_ id: Int, to name: String) { world.rename(id, to: name) }
+
+    // MARK: - BichitoPeek actions
+
+    /// Called with the bichito under a tap, or nil when the tap was on the ground (closes the peek).
+    var onPeek: ((Int?) -> Void)?
+
+    func pet(_ id: Int) {
+        world.pet(id)
+        Haptics.tap()
+    }
+
+    /// Drops food right next to it, to the side so it doesn't land under its body.
+    func feed(_ id: Int) {
+        guard let b = world.bichito(id) else { return }
+        // TODO(#41): drop its favourite food once foods have kinds (PR #54); for now, the default food.
+        world.dropFood(at: b.pos + Vec(b.recipe.radius + 8, 0))
+        Haptics.tap()
+    }
+
+    func startFollowing(_ id: Int) { follow.start(id) }
 
     // MARK: - Long press → card
 
@@ -156,6 +198,7 @@ final class WorldScene: SKScene, ObservableObject {
     override func update(_ currentTime: TimeInterval) {
         let dt = lastTime.map { min(max(currentTime - $0, 0), 0.25) } ?? 0
         lastTime = currentTime
+        if lens.snap != nil { zoom { $0.settle(dt: dt, screenSize) } }
         pending += dt
         while pending >= World.dt {
             pending -= World.dt
@@ -163,32 +206,23 @@ final class WorldScene: SKScene, ObservableObject {
             world.tick()
             for b in world.bichitos { bichitoNodes[b.id]?.tick(b) }
         }
+        if let to = follow.target(in: world) { // glide, so the 20 Hz steps and the first trip don't jump
+            lens.center = lens.center + (to - lens.center) * (1 - exp(-6 * dt))
+        }
         fit()
         let name = world.districts[world.district(at: lens.center)].name(world.language)
         if name != title { title = name }
-        if news != nil, currentTime > newsUntil { news = nil }
-        if world.districts.count > knownDistricts {
-            knownDistricts = world.districts.count
-            let place = world.districts[knownDistricts - 1].name(world.language)
-            announce(world.language == .es ? "Se abrió un barrio nuevo: \(place)" : "A new district opened: \(place)", at: currentTime)
-        }
-        draw(alpha: pending / World.dt, dt: dt, now: currentTime)
+        for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) { toasts.push(e, at: currentTime) }
+        seenEvents = world.eventTotal
+        toasts.update(at: currentTime)
+        if toasts.current != toast { toast = toasts.current }
+        draw(alpha: pending / World.dt, dt: dt)
     }
 
-    private func announce(_ line: String, at time: TimeInterval) {
-        news = line
-        newsUntil = time + 5
-    }
-
-    private func draw(alpha: Double, dt: Double, now: TimeInterval) {
+    private func draw(alpha: Double, dt: Double) {
         drawDistricts()
         var alive = Set<Int>()
         for b in world.bichitos {
-            if let old = homes[b.id], old != b.district {
-                let place = world.districts[b.district].name(world.language)
-                announce(world.language == .es ? "\(b.name) se muda a \(place)" : "\(b.name) is moving to \(place)", at: now)
-            }
-            homes[b.id] = b.district
             alive.insert(b.id)
             let node: BichitoNode
             if let n = bichitoNodes[b.id] {
@@ -205,12 +239,12 @@ final class WorldScene: SKScene, ObservableObject {
             // Feet sit a bit below the body centre the simulation tracks.
             node.position = screen(Vec(p.x, p.y + b.recipe.radius * 0.6))
             node.zPosition = depth(node.position)
+            node.level = level
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
             node.removeFromParent()
             bichitoNodes[id] = nil
-            homes[id] = nil
         }
         sync(&foodNodes, world.foods.map { ($0.id, $0.pos) }, make: makeFood)
         sync(&eggNodes, world.eggs.map { ($0.id, $0.pos) }, make: makeEgg)
@@ -324,7 +358,9 @@ extension WorldScene {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = finger, touches.contains(t), var g = touch, let view else { return }
         let p = t.location(in: view)
-        if case let .grab(id) = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp) {
+        let action = g.move(to: Vec(Double(p.x), Double(p.y)), time: t.timestamp)
+        follow.after(action)
+        if case let .grab(id) = action {
             world.grab(id)
             Haptics.tap()
         }
@@ -342,7 +378,8 @@ extension WorldScene {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let t = finger, touches.contains(t), let g = touch, let view else { return }
         switch g.tapAction {
-        case let .pet(id): world.pet(id); Haptics.tap()
+        case let .peek(id): onPeek?(id); Haptics.tap()
+        case .close: onPeek?(nil)
         case .feed: world.dropFood(at: worldPoint(t.location(in: view))); Haptics.tap()
         default: break
         }
@@ -377,12 +414,15 @@ enum Haptics {
 }
 
 /// One bichito on screen: sprite (with its pixel shadow), name under it, bubble over it.
+/// Name and bubble keep their size on screen at any zoom; only their anchors follow the sprite.
 final class BichitoNode: SKNode {
     private let sprite = SKSpriteNode()
     private let label = SKLabelNode()
     private let bubble = SKShapeNode()
     private let bubbleText = SKLabelNode()
     private let recipe: Recipe
+    /// Its rest-pose pixels, for where its head is.
+    private let rest: PixelGrid
     private var pixel: CGFloat = 2
     private var spring = Spring()
     private var legPhase = 0.0
@@ -393,6 +433,14 @@ final class BichitoNode: SKNode {
     private var key: SpriteKey?
     private var shownBubble: String?
     var language = Language.es
+    /// Zoom level: decides whether the name, the state icon and phrases show.
+    var level = Camera.Level.district {
+        didSet {
+            guard level != oldValue else { return }
+            label.isHidden = !level.showsWords
+            if talk != nil { talk?.shown = -1 } else { showBubble(shownBubble) } // redrawn for the new level
+        }
+    }
     /// `-screenshot-talk` (CI): every bubble becomes a phrase and stays up.
     static let alwaysTalk = CommandLine.arguments.contains("-screenshot-talk")
     private var talk: (text: String, times: [Double], clock: Double, shown: Int)?
@@ -406,6 +454,7 @@ final class BichitoNode: SKNode {
 
     init(_ b: Bichito, pixel: CGFloat) {
         recipe = b.recipe
+        rest = Generator.render(b.recipe)
         lastVel = b.vel
         lastMood = b.mood
         super.init()
@@ -415,6 +464,7 @@ final class BichitoNode: SKNode {
         show(name: b.name)
         label.verticalAlignmentMode = .top
         label.zPosition = 50
+        label.isHidden = !level.showsWords
         addChild(label)
 
         bubble.fillColor = .white
@@ -434,8 +484,9 @@ final class BichitoNode: SKNode {
     func layout(pixel: CGFloat) {
         self.pixel = pixel
         sprite.size = CGSize(width: CGFloat(Sprites.width) * pixel, height: CGFloat(Sprites.height) * pixel)
-        label.position = CGPoint(x: 0, y: -2 * pixel)
-        bubble.position = CGPoint(x: 0, y: 26 * pixel)
+        let at = Look.anchors(rest, pixel: Double(pixel))
+        label.position = CGPoint(x: 0, y: at.name)
+        bubble.position = CGPoint(x: 0, y: at.bubble)
         shapeBubble()
     }
 
@@ -510,7 +561,10 @@ final class BichitoNode: SKNode {
             t.clock += dt
             if t.clock < t.times[t.times.count - 1] + (BichitoNode.alwaysTalk ? 600 : 2) {
                 let shown = t.times.dropLast().filter { $0 <= t.clock }.count
-                if shown != t.shown { showBubble(t.text, revealed: shown) }
+                // Below Calle the phrase is still heard, but the bubble keeps the state icon.
+                if shown != t.shown {
+                    if level.showsWords { showBubble(t.text, revealed: shown) } else { showBubble(text) }
+                }
                 t.shown = shown
                 talk = t
                 return
@@ -539,7 +593,7 @@ final class BichitoNode: SKNode {
 
     /// The first `revealed` characters are drawn; the rest are laid out but clear, so the bubble never jumps.
     private func showBubble(_ text: String?, revealed: Int = .max) {
-        bubble.isHidden = text == nil
+        bubble.isHidden = text == nil || !level.showsIcons
         guard let text else { return }
         let chars = Array(text), k = min(revealed, chars.count)
         let style = NSMutableParagraphStyle()

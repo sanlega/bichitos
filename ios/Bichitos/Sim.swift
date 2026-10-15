@@ -32,6 +32,12 @@ struct Egg: Codable, Equatable { let id: Int; var pos: Vec; var parents: [Int]; 
 /// What an escaped bichito leaves behind. It keeps the bichito so food at the note can bring it back.
 struct Note: Codable, Equatable { var pos: Vec; var text: String; var bichito: Bichito }
 
+/// Session counter left out of saving and of ==, so a reopened world still equals the one saved.
+struct Tally: Equatable {
+    var n = 0
+    static func == (_: Tally, _: Tally) -> Bool { true }
+}
+
 enum WorldEvent: Codable, Equatable {
     case fought(Int, Int), fellInLove(Int, Int), eggLaid(Int, Int), hatched(Int)
     case emigrated(Int, Int) // bichito, district
@@ -90,6 +96,9 @@ struct World: Codable, Equatable {
     /// Places the districts (Barrios.swift); nil in saves from before the ring, until `fitDistricts`.
     var layoutSeed: UInt64?
     var events: [WorldEvent] = []
+    /// Events recorded since launch (the log above is capped): the scene's cursor for live toasts.
+    var eventTotal: Int { tally.n }
+    private var tally = Tally()
     var newsLog: News? = nil // read it through `news` (Noticias.swift); optional so saves from before it still load
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
@@ -517,8 +526,9 @@ struct World: Codable, Equatable {
         }
     }
 
-    /// Now and then a bichito moves to the district where its friends (and its own kind) live.
-    private mutating func emigrate() {
+    /// Now and then a bichito moves to the district where its friends (and its own kind) live, or the one affine to it.
+    /// Only unlocked districts are in `districts`, and full ones are skipped.
+    mutating func emigrate() {
         guard districts.count > 1 else { return }
         for i in bichitos.indices where bichitos[i].mood == .wander && roll() < 0.05 {
             let b = bichitos[i]
@@ -528,10 +538,14 @@ struct World: Codable, Equatable {
                 score[o.district] += (b.affinity[o.id] ?? 0) + (o.recipe.personality == b.recipe.personality ? 0.3 : 0)
                 count[o.district] += 1
             }
+            let affine = districts.map { $0.theme.affine == b.recipe.personality }
             func value(_ d: Int) -> Double {
-                (count[d] == 0 ? 0 : score[d] / Double(count[d])) - Double(count[d]) / Double(World.capacity) * 0.3
+                let friends = count[d] == 0 ? 0 : score[d] / Double(count[d])
+                let crowd = Double(count[d]) / Double(World.capacity) * 0.3
+                return friends - crowd + (affine[d] ? 0.4 : 0)
             }
-            guard let best = districts.indices.max(by: { value($0) < value($1) }),
+            let open = districts.indices.filter { $0 == b.district || count[$0] < World.capacity }
+            guard let best = open.max(by: { value($0) < value($1) }),
                   best != b.district, value(best) > value(b.district) + 0.25 else { continue }
             bichitos[i].district = best
             record(.emigrated(b.id, best))
@@ -565,8 +579,9 @@ struct World: Codable, Equatable {
         return nextId - 1
     }
 
-    private mutating func record(_ e: WorldEvent) {
+    mutating func record(_ e: WorldEvent) {
         events.append(e)
+        tally.n += 1
         report(e)
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
     }
