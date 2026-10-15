@@ -42,6 +42,12 @@ struct Egg: Codable, Equatable { let id: Int; var pos: Vec; var parents: [Int]; 
 /// What an escaped bichito leaves behind. It keeps the bichito so food at the note can bring it back.
 struct Note: Codable, Equatable { var pos: Vec; var text: String; var bichito: Bichito }
 
+/// Session counter left out of saving and of ==, so a reopened world still equals the one saved.
+struct Tally: Equatable {
+    var n = 0
+    static func == (_: Tally, _: Tally) -> Bool { true }
+}
+
 enum WorldEvent: Codable, Equatable {
     case fought(Int, Int), fellInLove(Int, Int), eggLaid(Int, Int), hatched(Int)
     case emigrated(Int, Int) // bichito, district
@@ -98,8 +104,9 @@ struct World: Codable, Equatable {
     var notes: [Note] = []
     var districts = [District(index: 0)]
     var events: [WorldEvent] = []
-    /// Events recorded since launch (not saved; the log above is capped): the scene's cursor for live toasts.
-    private(set) var eventTotal = 0
+    /// Events recorded since launch (the log above is capped): the scene's cursor for live toasts.
+    var eventTotal: Int { tally.n }
+    private var tally = Tally()
     var rng: SimRNG
     /// Set by the scene; nil = nobody is watching, so everyone gets the cheap off-screen physics.
     var visibleRect: Rect? = nil
@@ -574,7 +581,7 @@ struct World: Codable, Equatable {
 
     mutating func record(_ e: WorldEvent) {
         events.append(e)
-        eventTotal += 1
+        tally.n += 1
         if events.count > World.maxEvents { events.removeFirst(events.count - World.maxEvents) }
     }
 
