@@ -58,10 +58,14 @@ extension World {
     var layout: [Rect] { World.layout(seed: layoutSeed ?? 0) }
 
     /// The box around the unlocked districts: the map's walls and the camera's bounds.
+    /// A plain loop: it runs for every body on every tick, so no temporary arrays.
     var bounds: Rect {
-        let rs = districts.map(\.rect)
-        let x0 = rs.map(\.x).min() ?? 0, y0 = rs.map(\.y).min() ?? 0
-        let x1 = rs.map { $0.x + $0.w }.max() ?? 0, y1 = rs.map { $0.y + $0.h }.max() ?? 0
+        guard let first = districts.first?.rect else { return Rect(x: 0, y: 0, w: 0, h: 0) }
+        var x0 = first.x, y0 = first.y, x1 = first.x + first.w, y1 = first.y + first.h
+        for d in districts {
+            x0 = min(x0, d.rect.x); y0 = min(y0, d.rect.y)
+            x1 = max(x1, d.rect.x + d.rect.w); y1 = max(y1, d.rect.y + d.rect.h)
+        }
         return Rect(x: x0, y: y0, w: x1 - x0, h: y1 - y0)
     }
 
