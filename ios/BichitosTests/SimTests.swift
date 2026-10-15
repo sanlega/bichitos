@@ -182,7 +182,7 @@ final class SimTests: XCTestCase {
 
     /// FNV-1a over everything the simulation moves, Doubles by bit pattern, so any change in behaviour shows.
     /// Names and note texts are left out: they never feed back into the simulation.
-    /// Recorded before the #65 optimisation; re-record it only when the simulation changes on purpose.
+    /// Recorded before the #65 optimisation, re-recorded with the terrain (#33); re-record it only when the simulation changes on purpose.
     private func stateHash(_ w: World) -> String {
         var h: UInt64 = 0xcbf2_9ce4_8422_2325
         func mix(_ v: UInt64) { for k in 0..<8 { h = (h ^ ((v >> UInt64(8 * k)) & 0xff)) &* 0x0000_0100_0000_01b3 } }
@@ -215,7 +215,7 @@ final class SimTests: XCTestCase {
         w.catchUp(seconds: 1800)
         let hash = stateHash(w)
         print("STATE HASH: \(hash), \(w.bichitos.count) bichitos, \(w.events.count) events, \(w.eggs.count) eggs")
-        XCTAssertEqual(hash, "9a03602c11509ff5")
+        XCTAssertEqual(hash, "5b441c553e2c6042")
     }
 
     func testWorldSurvivesSaving() throws {
