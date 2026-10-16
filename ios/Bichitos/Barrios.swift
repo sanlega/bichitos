@@ -169,6 +169,24 @@ extension World {
         }
     }
 
+    /// DESIGN.md "Cartel": one at each end of every open path, where it crosses a district's edge — the themed
+    /// district's own at its entrance, Plaza Mayor's where the path leaves it — a bit inside, beside the path.
+    struct Sign: Equatable {
+        let theme: Int
+        let pos: Vec
+    }
+
+    var signs: [Sign] {
+        let plaza = layout[0].center, s = World.districtSize, inset = 40.0, side = Terrain.pathWidth / 2 + 24
+        return districts.filter { $0.index != 0 }.flatMap { d -> [Sign] in
+            // Same-sized boxes on a straight path from centre to centre: both edges are the same fraction `t` along it.
+            let v = d.rect.center - plaza, u = v.unit, n = Vec(-u.y, u.x)
+            let t = min(abs(v.x) > 0 ? s.x / 2 / abs(v.x) : 1, abs(v.y) > 0 ? s.y / 2 / abs(v.y) : 1)
+            return [Sign(theme: 0, pos: plaza + v * t - u * inset + n * side),
+                    Sign(theme: d.index, pos: d.rect.center - v * t + u * inset + n * side)]
+        }
+    }
+
     /// Bichitos whose home is `district` (whether or not they are walking there right now).
     func population(of district: Int) -> Int { bichitos.filter { $0.district == district }.count }
 }

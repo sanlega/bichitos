@@ -101,6 +101,10 @@ enum Terrarium {
         for i in w.bichitos.indices { w.bichitos[i].calm = 600 }
         let leaving = w.bichitos.firstIndex { $0.district == 0 } ?? 0
         return WorldScene(world: w, focus: Vec(edge, mid)) { w, _ in
+            if CommandLine.arguments.contains("-screenshot-unlock") { // #38: the neighbour opens now: mist, signs and banner
+                w.record(.unlocked(1, w.districts[1].theme.affine))
+                return
+            }
             w.bichitos[leaving].district = 1
             w.record(.emigrated(w.bichitos[leaving].id, 1)) // so the move gets its toast
         }

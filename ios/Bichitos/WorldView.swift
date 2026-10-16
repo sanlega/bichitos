@@ -98,6 +98,13 @@ struct WorldView: View {
                         .obstacle()
                         .padding(.bottom, 16)
                 } else {
+                    if let d = scene.unlocked, scene.world.districts.indices.contains(d) {
+                        UnlockBanner(district: scene.world.districts[d], language: scene.world.language,
+                                     go: { scene.travel(to: d); scene.unlocked = nil }, close: { scene.unlocked = nil })
+                            .obstacle()
+                            .padding(.horizontal, 16)
+                            .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+                    }
                     if let id = note, let n = scene.world.notes.first(where: { $0.bichito.id == id }) {
                         NoteCard(note: n, language: scene.world.language) { note = nil }
                             .obstacle()
@@ -116,6 +123,7 @@ struct WorldView: View {
             }
             .animation(.ui(reduceMotion: reduceMotion), value: peek)
             .animation(.ui(reduceMotion: reduceMotion), value: note)
+            .animation(.ui(reduceMotion: reduceMotion), value: scene.unlocked)
         }
         .onPreferenceChange(Obstacles.self) { scene.obstacles = $0 } // toast, peek, rotation, safe area
         .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil; note = nil } }
