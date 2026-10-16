@@ -134,6 +134,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/barrios.png
 
+      - name: Screenshot of a district unlocking
+        # -screenshot-unlock opens the -border world's neighbour live: the mist clearing, its signs and UnlockBanner (#38).
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -border -screenshot-unlock
+          sleep 4
+          xcrun simctl io "$SIM" screenshot screenshots/unlock.png
+
       - name: Screenshot of the news feed
         # -screenshot-news fills the staged world's news with stories of different ages and opens NewsFeed (#51).
         run: |

@@ -97,6 +97,13 @@ struct WorldView: View {
                         .obstacle()
                         .padding(.bottom, 16)
                 } else {
+                    if let d = scene.unlocked, scene.world.districts.indices.contains(d) {
+                        UnlockBanner(district: scene.world.districts[d], language: scene.world.language,
+                                     go: { scene.travel(to: d); scene.unlocked = nil }, close: { scene.unlocked = nil })
+                            .obstacle()
+                            .padding(.horizontal, 16)
+                            .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+                    }
                     if let id = peek {
                         BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
                             .obstacle()
@@ -109,6 +116,7 @@ struct WorldView: View {
                 }
             }
             .animation(.ui(reduceMotion: reduceMotion), value: peek)
+            .animation(.ui(reduceMotion: reduceMotion), value: scene.unlocked)
         }
         .onPreferenceChange(Obstacles.self) { scene.obstacles = $0 } // toast, peek, rotation, safe area
         .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
