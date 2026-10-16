@@ -76,16 +76,17 @@ extension Terrain {
         for k in cellIndices(s) { blocked[k] = true }
     }
 
-    /// How many of each piece of decoration a district's terrain gets.
+    /// How many of each piece of decoration a district's terrain gets: few, so the bichitos stay the stars (#91).
+    /// At most 3 lamps, each beside a path (`findRoom`).
     private static func decoration(_ t: District.Terrain) -> [(Building.Kind, Int)] {
         switch t {
-        case .sandStar: return [(.tree, 4), (.lamp, 6), (.bush, 2), (.flower, 6)]
-        case .puddles: return [(.tree, 4), (.bush, 3), (.rock, 2), (.flower, 4), (.lamp, 2)]
-        case .rockWalls: return [(.fence, 6), (.rock, 6), (.tree, 3), (.bush, 2), (.lamp, 2)]
-        case .meadowHills: return [(.tree, 7), (.bush, 4), (.flower, 6), (.lamp, 2)]
-        case .circuit: return [(.lamp, 6), (.fence, 3), (.tree, 3), (.rock, 2), (.bush, 2)]
-        case .shrubs: return [(.bush, 14), (.tree, 4), (.rock, 2), (.lamp, 1)]
-        case .flowers: return [(.flower, 20), (.tree, 4), (.bush, 3), (.fence, 2), (.lamp, 2)]
+        case .sandStar: return [(.tree, 3), (.lamp, 3), (.bush, 2), (.flower, 4)]
+        case .puddles: return [(.tree, 3), (.bush, 3), (.rock, 2), (.flower, 3), (.lamp, 2)]
+        case .rockWalls: return [(.fence, 4), (.rock, 4), (.tree, 3), (.bush, 2), (.lamp, 2)]
+        case .meadowHills: return [(.tree, 5), (.bush, 3), (.flower, 4), (.lamp, 2)]
+        case .circuit: return [(.lamp, 3), (.fence, 3), (.tree, 3), (.rock, 2), (.bush, 2)]
+        case .shrubs: return [(.bush, 9), (.tree, 3), (.rock, 2), (.lamp, 1)]
+        case .flowers: return [(.flower, 12), (.tree, 3), (.bush, 3), (.fence, 2), (.lamp, 2)]
         }
     }
 
@@ -162,6 +163,7 @@ extension Terrain {
         func fits(_ r: Rect) -> Bool {
             let room = Terrain.room(r, kind)
             guard room.y + room.h <= district.y + district.h, !rooms.contains(where: { $0.intersects(room) }) else { return false }
+            guard kind != .lamp || besidePath(Terrain.base(r, kind)) else { return false }
             return plain(Terrain.ground(r, kind), paths: kind == .monument)
         }
         if kind == .monument {
@@ -198,6 +200,11 @@ extension Terrain {
             }
         }
         return true
+    }
+
+    /// A path within 16 u of `base`: where lamps go.
+    func besidePath(_ base: Rect) -> Bool {
+        cellIndices(Rect(x: base.x - 16, y: base.y - 16, w: base.w + 32, h: base.h + 32)).contains { cells[$0] == .path }
     }
 
     /// The index of every cell `r` overlaps.
@@ -254,6 +261,19 @@ extension World {
         let k = eggs.filter { n.rect.contains($0.pos) }.count
         return Vec(n.rect.x + 16 + Double(k % 4) * 10, n.rect.y + n.rect.h / 2)
     }
+
+    /// Where food dropped at `p` lies: walkable and never behind something drawn over it (#91), so in front of whatever
+    /// would hide it. Nido and comedero hold it on purpose; flowers lie flat under it.
+    func foodSpot(_ p: Vec) -> Vec {
+        var p = terrain.nearestWalkable(p)
+        for _ in 0..<4 {
+            guard let b = terrain.buildings.first(where: { World.hides($0, p) }) else { break }
+            p = terrain.nearestWalkable(Vec(p.x, b.rect.y + b.rect.h + 8))
+        }
+        return p
+    }
+
+    static func hides(_ b: Building, _ p: Vec) -> Bool { ![.nido, .comedero, .flower].contains(b.kind) && b.rect.contains(p) }
 
     /// Who lives in the casita `id` (at most 2), by bichito id.
     func occupants(of id: Int) -> [Int] { bichitos.filter { $0.home == id }.map(\.id) }
