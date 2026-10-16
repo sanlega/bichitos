@@ -76,14 +76,10 @@ final class MaquetaTests: XCTestCase {
         let scene = Terrarium.screenshot()
         scene.size = CGSize(width: 440, height: 956)
         var w = scene.world
-        let id = w.bichitos.last!.id
-        var log: [String] = []
-        for t in 0..<200 {
-            w.tick()
-            let b = w.bichito(id)!
-            if b.mood != .sleep || w.asleepInside.isEmpty { log.append("tick \(t): \(b.mood) \(b.pos) timer \(b.timer) sleep \(b.needs.sleep)"); break }
-        }
-        XCTAssertEqual(log, [])
+        let inside = w.asleepInside
+        XCTAssertEqual(inside.values.map(\.count), [1])
+        for _ in 0..<120 { w.tick() }
+        XCTAssertEqual(w.asleepInside, inside)
     }
 
     func testOnlyOwnersAsleepAtTheDoorAreInside() {

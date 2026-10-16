@@ -69,8 +69,9 @@ enum Terrarium {
             // #37: one more, asleep in the casita wholly on screen nearest the middle, so the captures show one "Ocupado".
             func whole(_ b: Building) -> Bool { v.contains(Vec(b.rect.x, b.rect.y)) && v.contains(Vec(b.rect.x + b.rect.w, b.rect.y + b.rect.h + 32)) }
             let casitas = w.terrain.buildings.filter { $0.kind == .casita && $0.theme == 0 && $0.door != nil && whole($0) }
-            if let c = casitas.min(by: { ($0.door! - v.center).length < ($1.door! - v.center).length }), let door = c.door,
-               let i = w.index(of: w.add(Recipe.random(using: &rng), at: door)) {
+            if let c = casitas.min(by: { ($0.door! - v.center).length < ($1.door! - v.center).length }), let door = c.door {
+                let id = w.add(Recipe.random(using: &rng), at: door) // its own statement: `w.index(of: w.add(…))` reads `w` before the add
+                let i = w.index(of: id)!
                 w.bichitos[i].pos = door
                 w.bichitos[i].home = c.id
                 w.bichitos[i].calm = 600
