@@ -247,6 +247,22 @@ final class BarriosTests: XCTestCase {
         XCTAssertEqual(w.lockedOutlines, [])
     }
 
+    /// #38: a sign at each end of every open path, inside the district it names and beside the path, not on it.
+    func testSignsAtEveryPathEntrance() {
+        var w = world(seed: 9, count: 5, all: .dormilona)
+        XCTAssertEqual(w.signs, [], "Plaza Mayor alone has no open path")
+        for t in [3, 1, 6] { w.unlock(t) }
+        let signs = w.signs, plaza = w.layout[0].center
+        XCTAssertEqual(signs.count, 6)
+        XCTAssertEqual(signs.filter { $0.theme == 0 }.count, 3, "Plaza Mayor's at each path out")
+        XCTAssertEqual(Set(signs.map(\.theme)), [0, 3, 1, 6])
+        for (k, s) in signs.enumerated() {
+            XCTAssertTrue(w.layout[s.theme].contains(s.pos), "\(s) inside its district")
+            let u = (w.layout[signs[k | 1].theme].center - plaza).unit, q = s.pos - plaza
+            XCTAssertGreaterThan(abs(q.x * u.y - q.y * u.x), Terrain.pathWidth / 2, "\(s) beside its path")
+        }
+    }
+
     /// Mapa level: each bichito is a dot of its palette's base colour.
     func testMapDotIsThePaletteBase() {
         var rng = SeededRNG(seed: 4)
