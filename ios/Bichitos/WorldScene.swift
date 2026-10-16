@@ -29,6 +29,13 @@ final class WorldScene: SKScene, ObservableObject {
     /// Tapping the toast: `WorldView` sends the camera to the story.
     var onToastTap: ((WorldEvent) -> Void)?
     private var toasts = Toasts()
+    /// The district (place in `districts`) just unlocked, for `UnlockBanner`; nil once dismissed.
+    @Published var unlocked: Int? = nil
+    /// Unlocking: mist over the new district that clears from the centre out (DESIGN.md "Desbloqueo").
+    private var mists: [(node: SKShapeNode, rect: Rect, start: TimeInterval)] = []
+    private var mistDuration = 1.2
+    private var signNodes: [(node: SKNode, at: Vec)] = []
+    private var signKey = ""
     private var seenEvents: Int
     /// How many bichitos live in that district, for `BarrioPill`.
     @Published private(set) var population = 0
@@ -94,6 +101,8 @@ final class WorldScene: SKScene, ObservableObject {
         seenEvents = world.eventTotal
         // `-screenshot-toast` (CI): toasts stay up so the capture finds one.
         if CommandLine.arguments.contains("-screenshot-toast") { toasts.duration = 600 }
+        // `-screenshot-unlock` (CI): the mist clears slowly, so the capture catches it halfway.
+        if CommandLine.arguments.contains("-screenshot-unlock") { mistDuration = 10 }
         super.init(size: CGSize(width: 1, height: 1))
         scaleMode = .resizeFill
         anchorPoint = .zero
@@ -302,19 +311,98 @@ final class WorldScene: SKScene, ObservableObject {
         if name != title { title = name }
         if count != population { population = count }
         for e in world.events.suffix(min(world.eventTotal - seenEvents, world.events.count)) {
-            toasts.push(e, at: currentTime)
+            switch e {
+            case let .unlocked(d, _): // the banner says it instead of a toast
+                unlocked = d
+                let mist = SKShapeNode()
+                mist.fillColor = Ink.mist
+                mist.strokeColor = .clear
+                mist.zPosition = 2000 // over the y-sorted layer and the names
+                addChild(mist)
+                mists.append((node: mist, rect: world.districts[d].rect, start: currentTime))
+            default: toasts.push(e, at: currentTime)
+            }
             switch e { case .hatched, .unlocked: Haptics.fire(.success); default: break }
         }
         seenEvents = world.eventTotal
         toasts.update(at: currentTime)
         if toasts.current != toast { toast = toasts.current }
         draw(alpha: pending / World.dt, dt: dt)
+        drawMists(currentTime)
+    }
+
+    /// A hole opens in the mist from the district's centre while the rest fades; with Reduce Motion, just a 0.2 s fade.
+    private func drawMists(_ now: TimeInterval) {
+        let still = UIAccessibility.isReduceMotionEnabled
+        mists.removeAll { m in
+            let t = min(max((now - m.start) / (still ? 0.2 : mistDuration), 0), 1)
+            guard t < 1 else { m.node.removeFromParent(); return true }
+            let f = Ground.frame(m.rect), hw = CGFloat(f.w / 2) * unit, hh = CGFloat(f.h / 2) * unit
+            let path = CGMutablePath()
+            path.addLines(between: [CGPoint(x: -hw, y: -hh), CGPoint(x: hw, y: -hh), CGPoint(x: hw, y: hh), CGPoint(x: -hw, y: hh)])
+            path.closeSubpath()
+            let r = still ? 0 : CGFloat(1 - (1 - t) * (1 - t)) * hypot(hw, hh)
+            if r > 0 { // wound against the box, so it is a hole under either fill rule
+                path.move(to: CGPoint(x: r, y: 0))
+                path.addArc(center: .zero, radius: r, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
+                path.closeSubpath()
+            }
+            m.node.path = path
+            m.node.position = screen(m.rect.center)
+            m.node.alpha = CGFloat(1 - t * t)
+            m.node.isHidden = level == .map
+            return false
+        }
+    }
+
+    /// DESIGN.md "Cartel": a `bark` post with a `card` board and the district's name in 15 Heavy, at each path entrance
+    /// (`World.signs`). A fixed size on screen, like the names; not on the Mapa level.
+    private func drawSigns() {
+        let key = "\(world.districts.count) \(world.language)"
+        if key != signKey {
+            signKey = key
+            for s in signNodes { s.node.removeFromParent() }
+            signNodes = world.signs.map { s in
+                let node = WorldScene.sign(District(index: s.theme).name(world.language))
+                addChild(node)
+                return (node: node, at: s.pos)
+            }
+        }
+        for s in signNodes {
+            s.node.isHidden = level == .map
+            s.node.position = screen(s.at)
+            s.node.zPosition = depth(s.at.y)
+        }
+    }
+
+    private static func sign(_ name: String) -> SKNode {
+        let font = UIFont.systemFont(ofSize: 15, weight: .heavy)
+        let text = SKLabelNode()
+        text.attributedText = NSAttributedString(string: name, attributes: [
+            .font: UIFont(descriptor: font.fontDescriptor.withDesign(.rounded) ?? font.fontDescriptor, size: 15),
+            .foregroundColor: Ink.ink,
+        ])
+        text.verticalAlignmentMode = .center
+        let w = text.frame.width + 16, h: CGFloat = 26, post: CGFloat = 14
+        let stick = SKShapeNode(rect: CGRect(x: -2, y: 0, width: 4, height: post + h / 2), cornerRadius: 1)
+        stick.fillColor = Ground.color(0xC9B9A3) // bark
+        stick.strokeColor = .clear
+        let board = SKShapeNode(rect: CGRect(x: -w / 2, y: post, width: w, height: h), cornerRadius: 6)
+        board.fillColor = Ground.card
+        board.strokeColor = Ink.ink.withAlphaComponent(0.1)
+        board.zPosition = 1
+        text.position = CGPoint(x: 0, y: post + h / 2)
+        text.zPosition = 2
+        let node = SKNode()
+        for n in [stick, board, text] as [SKNode] { node.addChild(n) }
+        return node
     }
 
     private func draw(alpha: Double, dt: Double) {
         drawDistricts()
         let inside = world.asleepInside, sleepingIn = Set(inside.values.joined())
         drawBuildings(inside)
+        drawSigns()
         var alive = Set<Int>()
         for b in world.bichitos {
             alive.insert(b.id)
@@ -347,7 +435,13 @@ final class WorldScene: SKScene, ObservableObject {
         let onMap = level == .map
         sync(&dotNodes, onMap ? world.bichitos.map { ($0.id, $0.pos) } : [], make: makeDot)
         sync(&foodNodes, onMap ? [] : world.foods.map { ($0.id, $0.pos) }, make: makeFood)
-        sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
+        sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() }, gone: { id, n in
+            if self.world.eggs.contains(where: { $0.id == id }) { n.removeFromParent() } else { Self.hatch(n) } // gone from the world: it hatched
+        })
+        for e in world.eggs { // #12: it trembles harder as it gets ready, and cracks in its last seconds
+            eggNodes[e.id]?.speed = 1 + 3 * CGFloat(max(0, 1 - e.hatchIn / World.hatchTime))
+            eggNodes[e.id]?.children.first?.isHidden = e.hatchIn > 20
+        }
         sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
@@ -511,7 +605,8 @@ final class WorldScene: SKScene, ObservableObject {
     }()
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
-    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode) {
+    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode,
+                      gone: (Int, SKNode) -> Void = { $1.removeFromParent() }) {
         var alive = Set<Int>()
         for (id, pos) in items {
             alive.insert(id)
@@ -527,7 +622,7 @@ final class WorldScene: SKScene, ObservableObject {
             node.zPosition = depth(pos.y)
         }
         for (id, node) in nodes where !alive.contains(id) {
-            node.removeFromParent()
+            gone(id, node)
             nodes[id] = nil
         }
     }
@@ -575,7 +670,7 @@ final class WorldScene: SKScene, ObservableObject {
                 let f = Maqueta.frame(b)
                 node.position = screen(Vec(f.x, f.y))
                 node.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
-                node.zPosition = depth(Maqueta.sortY(b))
+                node.zPosition = b.kind == .flower ? 900 : depth(Maqueta.sortY(b)) // flowers lie flat: layer 4, under every bichito (#91)
                 guard let icon = node.children.first as? SKSpriteNode else { continue }
                 let sleeper = who.first.flatMap { world.bichito($0) }
                 let state = sleeper.flatMap { Look.bubble(mood: $0.mood, needs: $0.needs, dizzy: $0.dizzy) }
@@ -611,11 +706,31 @@ final class WorldScene: SKScene, ObservableObject {
         return n
     }
 
+    /// An egg rocks now and then (`speed` hurries it); its first child is the crack, shown just before it hatches.
     private func makeEgg() -> SKNode {
         let n = SKShapeNode(ellipseOf: CGSize(width: 8 * pixel, height: 10 * pixel))
         n.fillColor = UIColor(red: 1, green: 0.96, blue: 0.88, alpha: 1)
         n.strokeColor = Ink.ink.withAlphaComponent(0.25)
+        let path = CGMutablePath(), p = pixel
+        path.move(to: CGPoint(x: -4 * p, y: 0))
+        for (k, x) in [-2, 0, 2, 4].enumerated() { path.addLine(to: CGPoint(x: CGFloat(x) * p, y: k % 2 == 0 ? p : -p)) }
+        let crack = SKShapeNode(path: path)
+        crack.strokeColor = Ink.ink.withAlphaComponent(0.6)
+        crack.lineWidth = max(1, p / 2)
+        crack.isHidden = true
+        n.addChild(crack)
+        let rock = SKAction.sequence([.rotate(toAngle: 0.2, duration: 0.08), .rotate(toAngle: -0.2, duration: 0.16),
+                                      .rotate(toAngle: 0, duration: 0.08)])
+        n.run(.repeatForever(.sequence([.wait(forDuration: 2, withRange: 1.5), rock, rock])))
         return n
+    }
+
+    /// The shell bursts: the egg swells, flashes white and fades while the chick (already in the world) appears there.
+    private static func hatch(_ n: SKNode) {
+        n.removeAllActions()
+        n.speed = 1
+        n.zRotation = 0
+        n.run(.sequence([.group([.scale(to: 1.6, duration: 0.25), .fadeOut(withDuration: 0.25)]), .removeFromParent()]))
     }
 
     private func makeNote() -> SKNode {

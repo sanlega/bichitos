@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# A new push to the same PR or branch makes the run in flight useless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: macos-26
@@ -52,6 +57,7 @@ jobs:
           exit $status
 
       - name: Screenshot of the world
+        if: github.event_name != 'push'
         # The app launched with -screenshot starts a fixed, staged world; capture it after a few seconds of life.
         run: |
           xcrun simctl boot "$SIM" 2>/dev/null || true
@@ -87,6 +93,7 @@ jobs:
           done
 
       - name: Screenshot of a toast
+        if: github.event_name != 'push'
         # -screenshot-toast records an egg and a birth in the staged world and keeps the toast up (#49).
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -95,6 +102,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/toast.png
 
       - name: Screenshot of the editor
+        if: github.event_name != 'push'
         # -screenshot-editor opens the editor sheet over the same staged world.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -103,6 +111,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/editor.png
 
       - name: Screenshot of food mode
+        if: github.event_name != 'push'
         # -screenshot-food turns food mode on: FoodPicker, accent edge and hint over the staged world.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -111,6 +120,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/food.png
 
       - name: Screenshot of a bichito's card
+        if: github.event_name != 'push'
         # -screenshot-card opens the card of a staged bichito with friends, rivals and family.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -119,6 +129,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/card.png
 
       - name: Screenshot of a bichito's peek
+        if: github.event_name != 'push'
         # -screenshot-peek opens BichitoPeek (a tap on a bichito) over the tray.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -127,6 +138,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/peek.png
 
       - name: Screenshot of the district picker
+        if: github.event_name != 'push'
         # -screenshot-barrios opens BarrioPicker over the two-district world (-border): 2 open, 5 locked.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -134,7 +146,16 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/barrios.png
 
+      - name: Screenshot of a district unlocking
+        # -screenshot-unlock opens the -border world's neighbour live: the mist clearing, its signs and UnlockBanner (#38).
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -border -screenshot-unlock
+          sleep 4
+          xcrun simctl io "$SIM" screenshot screenshots/unlock.png
+
       - name: Screenshot of the news feed
+        if: github.event_name != 'push'
         # -screenshot-news fills the staged world's news with stories of different ages and opens NewsFeed (#51).
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -143,6 +164,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/news.png
 
       - name: Screenshot of the settings sheet
+        if: github.event_name != 'push'
         # -screenshot-settings opens the gearshape's sheet: «Voz» and «Vibración» (#15).
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
