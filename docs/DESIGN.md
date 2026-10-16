@@ -114,7 +114,7 @@ De atrás adelante:
 1. Fondo `mist` con el tinte del barrio.
 2. Terreno: pradera, arena, agua, roca.
 3. Caminos.
-4. Cosas planas en el suelo: sombras, comida, notas de escapada.
+4. Cosas planas en el suelo: sombras, comida, notas de escapada, flores.
 5. **Capa ordenada por `y`**: bichitos, huevos, edificios, plantas, rocas.
 6. Efectos de estado pixel.
 7. Nombres, bocadillos, iconos de estado.
