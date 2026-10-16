@@ -165,6 +165,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/settings.png
 
       - name: Screenshot by night
+        if: github.event_name != 'push'
         # -screenshot-night puts the staged world at 23:00: night light, lit windows and lamps (#40). world.png is noon.
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
