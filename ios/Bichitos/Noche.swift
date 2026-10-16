@@ -22,6 +22,15 @@ enum DayPhase: String {
         case .dawn: return 1 - (h - 6) / 2
         }
     }
+
+    /// The colour laid over the world and how strongly (DESIGN.md "Ambiente"); bichitos get half.
+    var shade: (color: RGBA, amount: Double) {
+        switch self {
+        case .day: return (RGBA(hex: 0xFFFFFF), 0)
+        case .dawn, .dusk: return (RGBA(hex: 0xFFB38A), 0.12)
+        case .night: return (RGBA(hex: 0x3B3F6B), 0.35)
+        }
+    }
 }
 
 extension Bichito {

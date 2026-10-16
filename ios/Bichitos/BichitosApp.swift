@@ -24,6 +24,8 @@ enum Terrarium {
 
     static func screenshot() -> WorldScene {
         WorldScene(world: World(seed: 7, date: Date(timeIntervalSince1970: 1_800_000_000))) { w, seen in
+            // 08:00 UTC: noon whatever the runner's zone, or 23:00 with `-screenshot-night` (#40).
+            w.timeZone = TimeZone(secondsFromGMT: (CommandLine.arguments.contains("-screenshot-night") ? -9 : 4) * 3600)!
             // Inside Plaza Mayor even when the Mapa level sees the whole ring (the egg and the note aren't clamped).
             let p = w.districts[0].rect, x0 = max(seen.x, p.x), y0 = max(seen.y, p.y)
             let v = Rect(x: x0, y: y0, w: min(seen.x + seen.w, p.x + p.w) - x0, h: min(seen.y + seen.h, p.y + p.h) - y0)
