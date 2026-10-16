@@ -244,7 +244,7 @@ final class EdificiosTests: XCTestCase {
         }
     }
 
-    /// #91: food dropped behind a casita, a tree or a monument lands in front, where it shows; in a nido it stays.
+    /// #91: food dropped behind a casita, a tree or a monument lands in front, where it shows; nido and comedero hold it.
     func testFoodIsNeverHiddenBehindABuilding() {
         var w = world(seed: 4, count: 0)
         for b in w.terrain.buildings where !b.kind.isDecoration || b.kind == .tree {
@@ -252,7 +252,7 @@ final class EdificiosTests: XCTestCase {
             let p = w.foods.first { $0.id == id }!.pos
             XCTAssertFalse(w.terrain.buildings.contains { World.hides($0, p) }, "food behind \(b.kind)")
             XCTAssertTrue(w.terrain.walkable(p))
-            if b.kind == .nido { XCTAssertTrue(b.rect.contains(p), "food left the nido") }
+            if b.kind == .nido || b.kind == .comedero { XCTAssertFalse(World.hides(b, b.rect.center), "\(b.kind) holds food") }
         }
     }
 }
