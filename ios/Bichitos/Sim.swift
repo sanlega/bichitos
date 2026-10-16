@@ -150,7 +150,12 @@ struct World: Codable, Equatable {
         unlock(0)
     }
 
-    func index(of id: Int) -> Int? { bichitos.firstIndex { $0.id == id } }
+    /// A plain loop: `firstIndex(where:)` copies every `Bichito` it passes in Debug (~10 µs for 50), and every lover,
+    /// fighter and chaser looks its partner up on every step.
+    func index(of id: Int) -> Int? {
+        for i in bichitos.indices where bichitos[i].id == id { return i }
+        return nil
+    }
     func bichito(_ id: Int) -> Bichito? { index(of: id).map { bichitos[$0] } }
 
     func clamp(_ p: Vec, _ r: Double) -> Vec {
