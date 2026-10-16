@@ -121,6 +121,24 @@ enum Maqueta {
         }
     }
 
+    /// #40: the centres of what glows at night, from the top-left of `rect`: a casita's windows (the same draws as
+    /// `casita`), a lamp's head.
+    static func lights(_ b: Building) -> [Vec] {
+        switch b.kind {
+        case .lamp: return [Vec(8, 8)]
+        case .casita:
+            var rng = SeededRNG(seed: b.seed)
+            _ = Double.random(in: 0.96...1.04, using: &rng) // light, roof and extra come first
+            _ = (Int.random(in: 0..<3, using: &rng), Int.random(in: 0..<3, using: &rng))
+            switch Int.random(in: 0..<3, using: &rng) {
+            case 0: return [Vec(17, 54), Vec(79, 54)]
+            case 1: return [Vec(72, 54)]
+            default: return [Vec(24, 54)]
+            }
+        default: return []
+        }
+    }
+
     private static func shadow(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> Shape {
         Shape(form: .oval(Rect(x: x + 8, y: y, w: w, h: h)), color: groundShadow)
     }
