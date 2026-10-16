@@ -575,7 +575,7 @@ final class WorldScene: SKScene, ObservableObject {
                 let f = Maqueta.frame(b)
                 node.position = screen(Vec(f.x, f.y))
                 node.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
-                node.zPosition = depth(Maqueta.sortY(b))
+                node.zPosition = b.kind == .flower ? 900 : depth(Maqueta.sortY(b)) // flowers lie flat: layer 4, under every bichito (#91)
                 guard let icon = node.children.first as? SKSpriteNode else { continue }
                 let sleeper = who.first.flatMap { world.bichito($0) }
                 let state = sleeper.flatMap { Look.bubble(mood: $0.mood, needs: $0.needs, dizzy: $0.dizzy) }

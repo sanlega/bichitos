@@ -231,4 +231,28 @@ final class EdificiosTests: XCTestCase {
         XCTAssertTrue(w.bichitos.allSatisfy { $0.bench == nil && ($0.mood == .toBed || $0.mood == .sleep) }, "\(w.bichitos.map(\.mood))")
         XCTAssertTrue(w.eggs.isEmpty)
     }
+
+    /// #91: a few lamps per district, each beside a path, never a cluster of them.
+    func testLampsAreFewAndBesidePaths() {
+        for seed in UInt64(1)...8 {
+            let t = Terrain(seed: seed)
+            for theme in District.themes.indices {
+                let lamps = t.buildings.filter { $0.theme == theme && $0.kind == .lamp }
+                XCTAssertLessThanOrEqual(lamps.count, 3, "seed \(seed) theme \(theme)")
+                for l in lamps { XCTAssertTrue(t.besidePath(l.base), "lamp away from paths, seed \(seed)") }
+            }
+        }
+    }
+
+    /// #91: food dropped behind a casita, a tree or a monument lands in front, where it shows; in a nido it stays.
+    func testFoodIsNeverHiddenBehindABuilding() {
+        var w = world(seed: 4, count: 0)
+        for b in w.terrain.buildings where !b.kind.isDecoration || b.kind == .tree {
+            let id = w.dropFood(at: Vec(b.rect.x + b.rect.w / 2, b.rect.y + 12))
+            let p = w.foods.first { $0.id == id }!.pos
+            XCTAssertFalse(w.terrain.buildings.contains { World.hides($0, p) }, "food behind \(b.kind)")
+            XCTAssertTrue(w.terrain.walkable(p))
+            if b.kind == .nido { XCTAssertTrue(b.rect.contains(p), "food left the nido") }
+        }
+    }
 }

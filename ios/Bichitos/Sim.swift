@@ -225,7 +225,7 @@ struct World: Codable, Equatable {
     mutating func dropFood(at p: Vec, kind: Food.Kind = .fruta) -> Int {
         if let n = notes.firstIndex(where: { ($0.pos - p).length < 60 && $0.bichito.favorite == kind }) { recover(n) }
         let id = newId()
-        foods.append(Food(id: id, pos: terrain.nearestWalkable(clamp(p, 4)), kind: kind))
+        foods.append(Food(id: id, pos: foodSpot(clamp(p, 4)), kind: kind))
         for i in bichitos.indices where bichitos[i].needs.hunger < 0.7 && bichitos[i].mood.isFree {
             bichitos[i].enter(.eat, for: 30, target: id)
         }
