@@ -45,6 +45,20 @@ final class MaquetaTests: XCTestCase {
         XCTAssertEqual(Maqueta.shapes(tree, closed: true), Maqueta.shapes(tree))
     }
 
+    /// The night glow sits on every lit window and lamp head, and nowhere else.
+    func testLightsSitOnTheLitGlass() {
+        for b in buildings where b.kind != .monument {
+            let glass = Maqueta.shapes(b, lit: true).compactMap { s -> Vec? in
+                guard s.color == Maqueta.warmLight else { return nil }
+                switch s.form {
+                case let .box(r, _), let .oval(r): return r.center
+                default: return nil
+                }
+            }
+            XCTAssertEqual(Maqueta.lights(b), glass, "\(b.kind)")
+        }
+    }
+
     func testTextureKeyIsOnePerBuildingStateAndZoomLevel() {
         let casita = buildings.first { $0.kind == .casita }!, tree = buildings.first { $0.kind == .tree }!
         XCTAssertEqual(Maqueta.key(casita, level: .district), Maqueta.key(casita, level: .district))
