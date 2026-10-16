@@ -42,71 +42,100 @@ enum Ground {
     static let waterEdge = color(0xB7D1D8)
     static let groundShadow = Ink.ink.withAlphaComponent(0.1)
 
+    /// Texture pixels across and down; 4 bytes each in memory.
+    static func pixels(_ key: Key) -> (w: Int, h: Int) {
+        let f = frame(World.layout(seed: key.seed)[key.district])
+        return (Int((f.w * key.texel).rounded(.up)), Int((f.h * key.texel).rounded(.up)))
+    }
+
+    static func bytes(_ key: Key) -> Int { pixels(key).w * pixels(key).h * 4 }
+
+    /// Room around the screen whose districts stay painted, so a pan finds the next one ready.
+    static let pad = World.districtGap
+
+    /// The textures worth keeping (#84): only districts whose ground is on screen or within `pad` of it, each at one
+    /// resolution, Calle and Cerca's finer one only for `here` (the district the camera is in); none on the Mapa.
+    /// Under 40 MiB with every district open on the largest iPhone, where painting both resolutions of all took 106 (MiB).
+    static func keep(_ view: Rect, here: Int, _ districts: [District], seed: UInt64, level: Camera.Level) -> Set<Key> {
+        guard level != .map else { return [] }
+        let open = districts.map(\.index).sorted()
+        let near = Rect(x: view.x - pad, y: view.y - pad, w: view.w + 2 * pad, h: view.h + 2 * pad)
+        return Set(districts.enumerated().compactMap { k, d in
+            let f = frame(d.rect)
+            guard f.x < near.x + near.w, near.x < f.x + f.w, f.y < near.y + near.h, near.y < f.y + f.h else { return nil }
+            return Key(seed: seed, district: d.index, open: open, texel: k == here ? texel(level) : min(texel(level), texel(.district)))
+        })
+    }
+
     /// Ground (rounded 16 u), its patches, its rock (with a shadow 4 u to the right) or water (with a 2 u
     /// `waterEdge` rim inside), the district tint at 8% over all of it, then the paths of 24 u with round ends.
-    static func paint(_ key: Key, _ t: Terrain) -> SKTexture {
+    /// `plain`: just the ground and its tint, the placeholder shown while the real one is painted.
+    /// A bare bitmap context, not UIKit's renderer, so it runs off the main thread at exactly 4 bytes a pixel.
+    static func paint(_ key: Key, _ t: Terrain, plain: Bool = false) -> CGImage {
         let rect = World.layout(seed: key.seed)[key.district], f = frame(rect), s = CGFloat(key.texel)
         let look = Terrain.look(District.themes[key.district].terrain)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        let size = CGSize(width: (CGFloat(f.w) * s).rounded(.up), height: (CGFloat(f.h) * s).rounded(.up))
-        let image = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
-            let g = ctx.cgContext
-            g.scaleBy(x: s, y: s)
-            g.translateBy(x: -CGFloat(f.x), y: -CGFloat(f.y))
-            let box = CGRect(x: rect.x, y: rect.y, width: rect.w, height: rect.h)
-            let land = CGPath(roundedRect: box, cornerWidth: 32, cornerHeight: 32, transform: nil)
-            func fill(_ p: CGPath, _ c: UIColor) {
-                g.addPath(p)
-                g.setFillColor(c.cgColor)
-                g.fillPath(using: .evenOdd)
-            }
-            fill(land, color(look.base))
-            g.saveGState()
-            g.addPath(land)
-            g.clip()
-            fill(path(t.outlines(look.other, in: rect, under: [.rock, .water])), color(look.other))
-            if let o = look.obstacle {
-                let blobs = path(t.outlines(o, in: rect))
-                if o == .water {
-                    fill(blobs, color(.water))
-                    g.saveGState()
-                    g.addPath(blobs)
-                    g.clip(using: .evenOdd)
-                    g.addPath(blobs)
-                    g.setLineWidth(8) // half of it inside: 2 u
-                    g.setStrokeColor(waterEdge.cgColor)
-                    g.strokePath()
-                    g.restoreGState()
-                } else {
-                    g.saveGState()
-                    g.translateBy(x: 8, y: 4)
-                    fill(blobs, groundShadow)
-                    g.restoreGState()
-                    fill(blobs, color(o))
-                }
-            }
-            g.setFillColor(color(District.themes[key.district].tint, 0.08).cgColor)
-            g.fill(box)
-            g.restoreGState()
-            let roads = CGMutablePath(), plaza = World.layout(seed: key.seed)[0], r = Terrain.pathWidth / 2
-            for (k, p) in t.paths.enumerated() where p.count == 2 {
-                var end = p[1]
-                if !key.open.contains(k + 1) { // locked: the star still crosses Plaza Mayor, its round end at the edge
-                    let d = p[1] - p[0]
-                    end = p[0] + d * min(abs(d.x) > 0 ? (plaza.w / 2 - r) / abs(d.x) : 1, abs(d.y) > 0 ? (plaza.h / 2 - r) / abs(d.y) : 1, 1)
-                }
-                roads.addLines(between: [CGPoint(x: p[0].x, y: p[0].y), CGPoint(x: end.x, y: end.y)])
-            }
-            g.addPath(roads)
-            g.setLineWidth(CGFloat(Terrain.pathWidth))
-            g.setLineCap(.round)
-            g.setLineJoin(.round)
-            g.setStrokeColor(color(.path).cgColor)
-            g.strokePath()
+        let (w, h) = pixels(key)
+        let g = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        g.translateBy(x: 0, y: CGFloat(h)) // y down, as UIKit draws
+        g.scaleBy(x: 1, y: -1)
+        g.scaleBy(x: s, y: s)
+        g.translateBy(x: -CGFloat(f.x), y: -CGFloat(f.y))
+        let box = CGRect(x: rect.x, y: rect.y, width: rect.w, height: rect.h)
+        let land = CGPath(roundedRect: box, cornerWidth: 32, cornerHeight: 32, transform: nil)
+        func fill(_ p: CGPath, _ c: UIColor) {
+            g.addPath(p)
+            g.setFillColor(c.cgColor)
+            g.fillPath(using: .evenOdd)
         }
-        return SKTexture(image: image)
+        fill(land, color(look.base))
+        if plain {
+            fill(land, color(District.themes[key.district].tint, 0.08))
+            return g.makeImage()!
+        }
+        g.saveGState()
+        g.addPath(land)
+        g.clip()
+        fill(path(t.outlines(look.other, in: rect, under: [.rock, .water])), color(look.other))
+        if let o = look.obstacle {
+            let blobs = path(t.outlines(o, in: rect))
+            if o == .water {
+                fill(blobs, color(.water))
+                g.saveGState()
+                g.addPath(blobs)
+                g.clip(using: .evenOdd)
+                g.addPath(blobs)
+                g.setLineWidth(8) // half of it inside: 2 u
+                g.setStrokeColor(waterEdge.cgColor)
+                g.strokePath()
+                g.restoreGState()
+            } else {
+                g.saveGState()
+                g.translateBy(x: 8, y: 4)
+                fill(blobs, groundShadow)
+                g.restoreGState()
+                fill(blobs, color(o))
+            }
+        }
+        g.setFillColor(color(District.themes[key.district].tint, 0.08).cgColor)
+        g.fill(box)
+        g.restoreGState()
+        let roads = CGMutablePath(), plaza = World.layout(seed: key.seed)[0], r = Terrain.pathWidth / 2
+        for (k, p) in t.paths.enumerated() where p.count == 2 {
+            var end = p[1]
+            if !key.open.contains(k + 1) { // locked: the star still crosses Plaza Mayor, its round end at the edge
+                let d = p[1] - p[0]
+                end = p[0] + d * min(abs(d.x) > 0 ? (plaza.w / 2 - r) / abs(d.x) : 1, abs(d.y) > 0 ? (plaza.h / 2 - r) / abs(d.y) : 1, 1)
+            }
+            roads.addLines(between: [CGPoint(x: p[0].x, y: p[0].y), CGPoint(x: end.x, y: end.y)])
+        }
+        g.addPath(roads)
+        g.setLineWidth(CGFloat(Terrain.pathWidth))
+        g.setLineCap(.round)
+        g.setLineJoin(.round)
+        g.setStrokeColor(color(.path).cgColor)
+        g.strokePath()
+        return g.makeImage()!
     }
 
     /// The outlines as a quadratic B-spline through their midpoints: smooth everywhere, so no corner survives.
