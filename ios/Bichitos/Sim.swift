@@ -379,7 +379,7 @@ struct World: Codable, Equatable {
             let d = o.pos - b.pos
             switch b.mood {
             case .love:
-                if let k = b.bench { dir = toBench(i, &b, j, o, k, h, ground); pace = 0.8 }
+                if let k = b.bench { dir = toBench(i, &b, j, o, k, h, ground, drowsy); pace = 0.8 }
                 else if d.length > r.radius + o.recipe.radius + 4 { dir = d.unit; pace = 0.8 }
             case .fight: dir = d.unit; pace = 1.2
             case .chase: dir = d.unit; pace = 1.4
@@ -643,10 +643,14 @@ struct World: Codable, Equatable {
 
     /// A bench lover (`i`, its partner `j` = `o`) walks to its end of the banco `k`. Seated, it faces its partner and
     /// waits, its clock stopped, until both sit; then they stay `benchStay` and love grows. The lower id ends the date: they
-    /// lay their egg (if they can) and get up. Returns where to walk, zero once seated. The partner gone calls it off.
+    /// lay their egg (if they can) and get up. Returns where to walk, zero once seated. The partner gone calls it off,
+    /// and so does its bedtime: night wins, the date ends with no egg and `decide` sends it to bed (the partner follows).
     private mutating func toBench(_ i: Int, _ b: inout Bichito, _ j: Int, _ o: Bichito, _ k: Int, _ h: Double,
-                                  _ ground: Terrain) -> Vec {
-        guard o.bench == k, o.target == b.id, ground.buildings.indices.contains(k) else { b.timer = 0; return .zero }
+                                  _ ground: Terrain, _ drowsy: Double) -> Vec {
+        guard o.bench == k, o.target == b.id, ground.buildings.indices.contains(k), drowsy <= b.bedtime else {
+            b.timer = 0
+            return .zero
+        }
         let bench = ground.buildings[k], seat = World.seat(on: bench, b.id, o.id)
         let d = seat - b.pos
         guard d.length < 2 + b.recipe.speed * 0.8 * h else { return d.unit }

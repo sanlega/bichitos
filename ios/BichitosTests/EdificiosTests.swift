@@ -157,7 +157,7 @@ final class EdificiosTests: XCTestCase {
     func testLoversSitOnTheBenchAndTheirEggHatchesInTheNest() {
         var done = false
         for seed in UInt64(1)...10 where !done {
-            var w = World(seed: seed, date: start)
+            var w = World(testSeed: seed)
             let bench = w.buildings(in: 0).first { $0.kind == .banco }!, nest = w.buildings(in: 0).first { $0.kind == .nido }!
             let (a, b) = lovers(&w, seed: seed)
             var sat = 0, inNest = false, child: Int? = nil
@@ -187,7 +187,7 @@ final class EdificiosTests: XCTestCase {
     func testLoversLoveWhereTheyAreWhenTheBenchIsTaken() {
         var done = false
         for seed in UInt64(1)...10 where !done {
-            var w = World(seed: seed, date: start)
+            var w = World(testSeed: seed)
             let bench = w.buildings(in: 0).first { $0.kind == .banco }!, nest = w.buildings(in: 0).first { $0.kind == .nido }!
             let (c, d) = lovers(&w, seed: seed + 100, at: World.seat(on: bench, 0, 1))
             for (x, y) in [(c, d), (d, c)] { // already sitting there, for good
@@ -210,8 +210,25 @@ final class EdificiosTests: XCTestCase {
         }
         XCTAssertTrue(done)
         // No nest in the district (a placement that failed): the egg is laid where they are, as before.
-        let w = World(seed: 1, date: start)
+        let w = World(testSeed: 1)
         XCTAssertNil(World.nestSpot(w.buildings(in: 0).filter { $0.kind != .nido }, []))
         XCTAssertNotNil(w.nestSpot(0))
+    }
+
+    func testNightEndsADateOnTheBench() {
+        // testStart is 22:13 UTC: night, past everyone's bedtime.
+        var w = World(testSeed: 2, timeZone: TimeZone(secondsFromGMT: 0)!)
+        let bench = w.buildings(in: 0).first { $0.kind == .banco }!
+        let (c, d) = lovers(&w, seed: 7, at: World.seat(on: bench, 0, 1))
+        for (x, y) in [(c, d), (d, c)] {
+            let k = w.index(of: x)!
+            w.bichitos[k].pos = World.seat(on: bench, x, y)
+            w.bichitos[k].enter(.love, for: 1e6, target: y)
+            w.bichitos[k].bench = bench.id
+        }
+        for _ in 0..<40 { w.tick() } // two off-screen updates each
+        XCTAssertTrue(w.sitting(on: bench.id).isEmpty)
+        XCTAssertTrue(w.bichitos.allSatisfy { $0.bench == nil && ($0.mood == .toBed || $0.mood == .sleep) }, "\(w.bichitos.map(\.mood))")
+        XCTAssertTrue(w.eggs.isEmpty)
     }
 }
