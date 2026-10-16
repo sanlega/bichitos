@@ -150,11 +150,13 @@ struct World: Codable, Equatable {
         unlock(0)
     }
 
-    /// A plain loop: `firstIndex(where:)` copies every `Bichito` it passes in Debug (~10 µs for 50), and every lover,
-    /// fighter and chaser looks its partner up on every step.
+    /// Through the buffer: in Debug `bichitos[i]` copies the whole `Bichito` (~0.2 µs), and every lover, fighter and
+    /// chaser looks its partner up on every step.
     func index(of id: Int) -> Int? {
-        for i in bichitos.indices where bichitos[i].id == id { return i }
-        return nil
+        bichitos.withUnsafeBufferPointer { all in
+            for i in all.indices where all[i].id == id { return i }
+            return nil
+        }
     }
     func bichito(_ id: Int) -> Bichito? { index(of: id).map { bichitos[$0] } }
 

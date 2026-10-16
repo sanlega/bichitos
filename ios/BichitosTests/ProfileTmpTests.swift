@@ -35,6 +35,9 @@ final class ProfileTmpTests: XCTestCase {
         time("recipe.radius+speed+sleepiness") { let r = w.bichitos[3].recipe; for _ in 0..<n { sink += r.radius + r.speed + r.sleepiness } }
         time("bedtime") { let c = w.bichitos[3]; for _ in 0..<n { sink += c.bedtime } }
         time("district rect contains+center") { let c = w.bichitos[3]; for _ in 0..<n { let h = w.districts[c.district].rect; if h.contains(c.pos) { sink += h.center.x } } }
+        let arr = w.bichitos
+        time("array[i].id") { for k in 0..<n { sink += Double(arr[k % 50].id) } }
+        time("ubp[i].id") { arr.withUnsafeBufferPointer { u in for k in 0..<n { sink += Double(u[k % 50].id) } } }
         time("max/min") { for k in 0..<n { sink += max(0, min(1, Double(k))) } }
         print("MICRO sink \(sink)")
     }
