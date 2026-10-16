@@ -137,7 +137,14 @@ struct World: Codable, Equatable {
         unlock(0)
     }
 
-    func index(of id: Int) -> Int? { bichitos.firstIndex { $0.id == id } }
+    /// Through the buffer: in Debug `bichitos[i]` copies the whole `Bichito` (~0.2 µs), and every lover, fighter and
+    /// chaser looks its partner up on every step.
+    func index(of id: Int) -> Int? {
+        bichitos.withUnsafeBufferPointer { all in
+            for i in all.indices where all[i].id == id { return i }
+            return nil
+        }
+    }
     func bichito(_ id: Int) -> Bichito? { index(of: id).map { bichitos[$0] } }
 
     func clamp(_ p: Vec, _ r: Double) -> Vec {
@@ -254,12 +261,14 @@ struct World: Codable, Equatable {
         }
     }
 
-    mutating func tick() {
+    mutating func tick() { tick(terrain) }
+
+    /// `ground` is `terrain`, which never changes: the catch-up fetches it once for all its ticks, not once per tick.
+    private mutating func tick(_ ground: Terrain) {
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
         let walls = bounds // once per tick, not per body: districts only unlock after the moves
-        let ground = terrain
         let drowsy = drowsiness
         if watched {
             for i in bichitos.indices {
@@ -293,7 +302,8 @@ struct World: Codable, Equatable {
         passTime(total - full)
         let watching = visibleRect
         visibleRect = nil
-        for _ in 0..<Int(full * World.hz) { tick() }
+        let ground = terrain
+        for _ in 0..<Int(full * World.hz) { tick(ground) }
         visibleRect = watching
     }
 
@@ -409,7 +419,7 @@ struct World: Codable, Equatable {
             break
         }
         if dir != .zero {
-            let d = steer(dir, b, ground)
+            let d = steer(dir, b.pos, b.recipe.radius, b.id, ground)
             if d != dir { dir = d; if b.mood == .wander { b.heading = atan2(d.y, d.x) } }
         }
 
@@ -472,15 +482,16 @@ struct World: Codable, Equatable {
 
     /// Water or rock just ahead: the first clear heading turning away from it, each bichito favouring its own side.
     /// A simple detour, no pathfinding: it slides along the shore and may give up in a dead end.
-    private func steer(_ dir: Vec, _ b: Bichito, _ ground: Terrain) -> Vec {
-        let ahead = b.recipe.radius + Terrain.cell
-        guard !ground.walkable(b.pos + dir * ahead) else { return dir }
-        let side = b.id % 2 == 0 ? 1.0 : -1.0
+    /// Takes the fields, not the Bichito: passing `b` would copy it on every step in Debug.
+    private func steer(_ dir: Vec, _ pos: Vec, _ radius: Double, _ id: Int, _ ground: Terrain) -> Vec {
+        let ahead = radius + Terrain.cell
+        guard !ground.walkable(pos + dir * ahead) else { return dir }
+        let side = id % 2 == 0 ? 1.0 : -1.0
         for a in World.detours {
             for k in 0..<2 {
                 let s = k == 0 ? side : -side, c = cos(a * s), n = sin(a * s)
                 let d = Vec(dir.x * c - dir.y * n, dir.x * n + dir.y * c)
-                if ground.walkable(b.pos + d * ahead) { return d }
+                if ground.walkable(pos + d * ahead) { return d }
             }
         }
         return dir
@@ -542,16 +553,24 @@ struct World: Codable, Equatable {
 
     private mutating func encounters() {
         // Only the open (free and calm) can meet, and meeting never opens anyone, so the rest stay out of the grid.
-        let open = bichitos.indices.filter { bichitos[$0].mood.isFree && bichitos[$0].calm <= 0 }
+        // In Debug `bichitos[i]` copies the whole Bichito on every read: read through the buffer, or copy each one once.
+        let (open, points) = bichitos.withUnsafeBufferPointer { all in
+            let open = all.indices.filter { all[$0].mood.isFree && all[$0].calm <= 0 }
+            return (open, open.map { all[$0].pos })
+        }
         guard open.count > 1 else { return }
-        let grid = SpatialHash(cell: 64, points: open.map { bichitos[$0].pos })
-        for i in open where bichitos[i].mood.isFree && bichitos[i].calm <= 0 {
+        let grid = SpatialHash(cell: 64, points: points)
+        for i in open {
+            let a = bichitos[i]
+            guard a.mood.isFree, a.calm <= 0 else { continue }
             var met = -1
-            grid.forEach(near: bichitos[i].pos) { k in
+            grid.forEach(near: a.pos) { k in
                 let j = open[k]
-                guard j != i, bichitos[j].mood.isFree, bichitos[j].calm <= 0 else { return false }
-                let reach = bichitos[i].recipe.radius + bichitos[j].recipe.radius + 24
-                guard (bichitos[j].pos - bichitos[i].pos).length < reach else { return false }
+                guard j != i else { return false }
+                let o = bichitos[j]
+                guard o.mood.isFree, o.calm <= 0 else { return false }
+                let reach = a.recipe.radius + o.recipe.radius + 24
+                guard (o.pos - a.pos).length < reach else { return false }
                 met = j
                 return true
             }
