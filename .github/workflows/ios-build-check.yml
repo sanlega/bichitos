@@ -56,6 +56,7 @@ jobs:
           grep -E "error:|warning: .*Bichitos|Test Case .* (passed|failed)|XCTAssert|\*\* (TEST|BUILD)" build.log | sort -u | head -300
           exit $status
 
+      # Every screenshot step skips push runs: on master only the tests run, so the app is never installed.
       - name: Screenshot of the world
         if: github.event_name != 'push'
         # The app launched with -screenshot starts a fixed, staged world; capture it after a few seconds of life.
@@ -138,6 +139,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/peek.png
 
       - name: Screenshot of a goodbye note
+        if: github.event_name != 'push'
         # -screenshot-note reads the staged runaway's note (a tap on it) over the tray (#13).
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
@@ -155,6 +157,7 @@ jobs:
           xcrun simctl io "$SIM" screenshot screenshots/barrios.png
 
       - name: Screenshot of a district unlocking
+        if: github.event_name != 'push'
         # -screenshot-unlock opens the -border world's neighbour live: the mist clearing, its signs and UnlockBanner (#38).
         run: |
           xcrun simctl terminate "$SIM" com.santilega.bichitos || true
