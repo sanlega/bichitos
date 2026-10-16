@@ -125,6 +125,13 @@ extension World {
             .min { ($0.pos - p).length < ($1.pos - p).length }?.id
     }
 
+    /// The goodbye note under a tap, by its bichito's id: the card is 20×16 u around its world point.
+    func note(at p: Vec, pad: Double) -> Int? {
+        notes
+            .filter { abs($0.pos.x - p.x) <= 10 + pad && abs($0.pos.y - p.y) <= 8 + pad }
+            .min { ($0.pos - p).length < ($1.pos - p).length }?.bichito.id
+    }
+
     /// VoiceOver «Lanzar»: thrown in a random direction, about as hard as a good flick.
     mutating func toss<G: RandomNumberGenerator>(_ id: Int, using rng: inout G) {
         let a = Double.random(in: 0..<2 * .pi, using: &rng)

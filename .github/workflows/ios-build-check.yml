@@ -137,6 +137,14 @@ jobs:
           sleep 6
           xcrun simctl io "$SIM" screenshot screenshots/peek.png
 
+      - name: Screenshot of a goodbye note
+        # -screenshot-note reads the staged runaway's note (a tap on it) over the tray (#13).
+        run: |
+          xcrun simctl terminate "$SIM" com.santilega.bichitos || true
+          xcrun simctl launch "$SIM" com.santilega.bichitos -screenshot -screenshot-note
+          sleep 6
+          xcrun simctl io "$SIM" screenshot screenshots/note.png
+
       - name: Screenshot of the district picker
         if: github.event_name != 'push'
         # -screenshot-barrios opens BarrioPicker over the two-district world (-border): 2 open, 5 locked.

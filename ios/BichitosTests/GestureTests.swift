@@ -124,6 +124,17 @@ final class GestureTests: XCTestCase {
         XCTAssertNil(w.bichito(at: Vec(600, 600), pad: 10))
     }
 
+    func testTapOnANoteFindsItsRunaway() {
+        var w = World(testSeed: 1)
+        var rng = SeededRNG(seed: 1)
+        let id = w.add(Recipe.random(using: &rng), at: Vec(200, 200)) // its own statement: `w.bichito(w.add(…))` reads `w` before the add
+        let gone = w.bichito(id)!
+        w.bichitos.removeAll()
+        w.notes.append(Note(pos: gone.pos, text: "adiós", bichito: gone))
+        XCTAssertEqual(w.note(at: gone.pos + Vec(12, 5), pad: 4), gone.id, "anywhere on the 20×16 u slip, plus the pad")
+        XCTAssertNil(w.note(at: gone.pos + Vec(0, 20), pad: 4))
+    }
+
     func testThrownBichitoGetsDizzyAndSlowsDown() {
         var w = World(testSeed: 2)
         var rng = SeededRNG(seed: 2)

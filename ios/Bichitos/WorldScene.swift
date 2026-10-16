@@ -227,6 +227,8 @@ final class WorldScene: SKScene, ObservableObject {
 
     /// Called with the bichito under a tap, or nil when the tap was on the ground (closes the peek).
     var onPeek: ((Int?) -> Void)?
+    /// Called with the escaped bichito's id when a tap lands on its goodbye note.
+    var onNote: ((Int) -> Void)?
 
     /// The squash comes on every pet, not only when the mood changes, so a rub keeps it squishing.
     func pet(_ id: Int) {
@@ -326,7 +328,7 @@ final class WorldScene: SKScene, ObservableObject {
                 mists.append((node: mist, rect: world.districts[d].rect, start: currentTime))
             default: toasts.push(e, at: currentTime)
             }
-            switch e { case .hatched, .unlocked: Haptics.fire(.success); default: break }
+            switch e { case .hatched, .unlocked, .recovered: Haptics.fire(.success); default: break }
         }
         seenEvents = world.eventTotal
         toasts.update(at: currentTime)
@@ -449,7 +451,7 @@ final class WorldScene: SKScene, ObservableObject {
             eggNodes[e.id]?.speed = 1 + 3 * CGFloat(max(0, 1 - e.hatchIn / World.hatchTime))
             eggNodes[e.id]?.children.first?.isHidden = e.hatchIn > 20
         }
-        sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
+        sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: makeNote)
     }
 
     /// #77: names and phrase bubbles on screen never touch (`LabelLayout`). Buffers are kept between frames.
@@ -821,11 +823,19 @@ final class WorldScene: SKScene, ObservableObject {
         n.run(.sequence([.group([.scale(to: 1.6, duration: 0.25), .fadeOut(withDuration: 0.25)]), .removeFromParent()]))
     }
 
-    private func makeNote() -> SKNode {
-        let n = SKShapeNode(rectOf: CGSize(width: 14 * pixel, height: 10 * pixel), cornerRadius: pixel)
+    /// DESIGN.md `Note`: a `card` slip of 20×16 u, turned ±6° (by id, so it keeps its tilt) with a shadow under it.
+    private func makeNote(_ id: Int) -> SKNode {
+        let size = CGSize(width: 20 * pixel, height: 16 * pixel)
+        let n = SKShapeNode(rectOf: size, cornerRadius: pixel)
         n.fillColor = .white
         n.strokeColor = Ink.ink.withAlphaComponent(0.15)
-        n.zRotation = 0.12
+        n.zRotation = (id % 2 == 0 ? 6 : -6) * .pi / 180
+        let shadow = SKShapeNode(rectOf: size, cornerRadius: pixel)
+        shadow.fillColor = Ink.ink.withAlphaComponent(0.12)
+        shadow.strokeColor = .clear
+        shadow.position = CGPoint(x: pixel, y: -pixel)
+        shadow.zPosition = -0.01
+        n.addChild(shadow)
         let mark = SKLabelNode(text: "✉️")
         mark.fontSize = 6 * pixel
         mark.verticalAlignmentMode = .center
@@ -881,8 +891,14 @@ extension WorldScene {
         guard let t = finger, touches.contains(t), let g = touch, let view else { return }
         switch g.tapAction {
         case let .peek(id): onPeek?(id); Haptics.tap()
-        case .close: onPeek?(nil)
-        case .feed: world.dropFood(at: worldPoint(t.location(in: view)), kind: foodKind); Haptics.tap()
+        case .close:
+            if let id = world.note(at: worldPoint(t.location(in: view)), pad: Double(8 / unit)) { onNote?(id); Haptics.tap() } else { onPeek?(nil) }
+        case .feed:
+            let gone = Set(world.notes.map(\.bichito.id))
+            world.dropFood(at: worldPoint(t.location(in: view)), kind: foodKind)
+            // Its favourite at the note brought it back: it falls in triumphantly, like a new one from the editor.
+            for b in world.bichitos where gone.contains(b.id) { dropping.insert(b.id) }
+            Haptics.tap()
         default: break
         }
         if g.isDrag, let id = g.target {
