@@ -10,6 +10,7 @@ struct WorldView: View {
     @State private var creating = false
     @State private var card: Int? // id of the bichito whose card is open
     @State private var peek: Int? // id of the bichito whose peek is up
+    @State private var note: Int? // id of the escaped bichito whose goodbye note is being read
     @State private var picking = false // BarrioPicker is open
     @State private var reading = false // NewsFeed is open
     @State private var setting = false // SettingsSheet is open
@@ -97,7 +98,12 @@ struct WorldView: View {
                         .obstacle()
                         .padding(.bottom, 16)
                 } else {
-                    if let id = peek {
+                    if let id = note, let n = scene.world.notes.first(where: { $0.bichito.id == id }) {
+                        NoteCard(note: n, language: scene.world.language) { note = nil }
+                            .obstacle()
+                            .padding(.horizontal, 16)
+                            .transition(reduceMotion ? AnyTransition.opacity : .move(edge: .bottom).combined(with: .opacity))
+                    } else if let id = peek {
                         BichitoPeek(scene: scene, id: id, openCard: { card = id; peek = nil }, close: { peek = nil })
                             .obstacle()
                             .padding(.horizontal, 16)
@@ -109,9 +115,10 @@ struct WorldView: View {
                 }
             }
             .animation(.ui(reduceMotion: reduceMotion), value: peek)
+            .animation(.ui(reduceMotion: reduceMotion), value: note)
         }
         .onPreferenceChange(Obstacles.self) { scene.obstacles = $0 } // toast, peek, rotation, safe area
-        .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil } }
+        .onChange(of: foodMode) { _, on in scene.foodMode = on; if on { peek = nil; note = nil } }
         .onChange(of: foodKind) { _, k in scene.foodKind = k }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in scene.scareEveryone() }
         .sheet(isPresented: $creating) {
@@ -122,7 +129,8 @@ struct WorldView: View {
         }
         .onAppear {
             scene.onLongPress = { card = $0 }
-            scene.onPeek = { peek = $0 }
+            scene.onPeek = { peek = $0; note = nil }
+            scene.onNote = { note = $0; peek = nil }
             scene.onToastTap = { event in
                 if let place = scene.world.news.place(of: event) { scene.travel(to: place) }
                 reading = false
@@ -139,11 +147,40 @@ struct WorldView: View {
             if CommandLine.arguments.contains("-screenshot-peek") { // the staged bichito with mixed needs
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { peek = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
             }
+            if CommandLine.arguments.contains("-screenshot-note") { // the staged runaway's note, read
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { note = scene.world.notes.first?.bichito.id }
+            }
             if CommandLine.arguments.contains("-screenshot-card") {
                 // After the staged world is populated: the one with friends, rivals and family.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { card = scene.world.bichitos.first { !$0.affinity.isEmpty }?.id }
             }
         }
+    }
+}
+
+/// A tapped goodbye note, read over the tray: the runaway's absurd farewell and the food that brings it back.
+/// A tap on the ground or a swipe down closes it.
+private struct NoteCard: View {
+    let note: Note
+    let language: Language
+    var close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(note.text)
+                .font(.system(.body, design: .rounded, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            // Its favourite left at the note is what brings it back (CONCEPT.md "Necesidades y escapadas").
+            Text(note.bichito.lovesLine(language))
+                .font(.system(.footnote, design: .rounded, weight: .medium))
+                .foregroundStyle(Color.inkDim)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(Color.ink)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
+        .gesture(DragGesture(minimumDistance: 20).onEnded { if $0.translation.height > 40 { close() } })
+        .accessibilityElement(children: .combine)
     }
 }
 

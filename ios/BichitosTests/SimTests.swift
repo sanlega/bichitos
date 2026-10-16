@@ -151,6 +151,8 @@ final class SimTests: XCTestCase {
         XCTAssertTrue(w.notes.isEmpty)
         XCTAssertNotNil(w.bichito(id))
         XCTAssertTrue(w.events.contains(.recovered(id)))
+        XCTAssertEqual(w.news.items.first?.event, .recovered(id), "the return is in the event log")
+        XCTAssertTrue(w.newsText(w.news.items[0], .es).contains("volvió a casa"))
     }
 
     func testWeekLongCatchUpTerminatesAndAppliesNeeds() {
