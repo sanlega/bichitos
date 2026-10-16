@@ -3,6 +3,17 @@ import XCTest
 
 /// TEMPORARY (#92): cost of the primitives `update()` runs, in Debug.
 final class ProfileTmpTests: XCTestCase {
+    func testCatchUpThrice() {
+        for _ in 0..<3 {
+            var w = World(testSeed: 21, date: Date(timeIntervalSince1970: 1_700_000_000))
+            var g = SeededRNG(seed: 21)
+            for _ in 0..<40 { w.add(Recipe.random(using: &g)) }
+            let t0 = Date()
+            w.catchUp(seconds: 2 * 3600)
+            print("THRICE \(String(format: "%.3f", Date().timeIntervalSince(t0))) s, \(w.bichitos.count)")
+        }
+    }
+
     func testMicro() {
         var w = World(testSeed: 21, date: World.testStart)
         var g = SeededRNG(seed: 21)
