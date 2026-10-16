@@ -223,6 +223,38 @@ extension World {
         return all.indices.contains(id) ? all[id] : nil
     }
 
+    /// Where a lover sits on a banco: the lower id at the left end, both on the seat, facing each other.
+    static func seat(on bench: Building, _ me: Int, _ partner: Int) -> Vec {
+        let r = bench.rect
+        return Vec(me < partner ? r.x + 20 : r.x + r.w - 20, r.y + r.h - 12)
+    }
+
+    /// Who is sitting on the banco `id` right now (not those still walking there), by bichito id.
+    func sitting(on id: Int) -> [Int] {
+        guard let bench = building(id) else { return [] }
+        return bichitos.filter { $0.bench == id && $0.pos == World.seat(on: bench, $0.id, $0.target ?? 0) }.map(\.id)
+    }
+
+    /// The banco of `district` while no pair has it; nil when taken or when the district has none.
+    func freeBench(_ district: Int) -> Int? {
+        buildings(in: district).first { k in k.kind == .banco && !bichitos.contains { $0.bench == k.id } }?.id
+    }
+
+    /// The eggs lying in the nido `id`.
+    func eggs(inNest id: Int) -> [Egg] {
+        guard let nest = building(id) else { return [] }
+        return eggs.filter { nest.rect.contains($0.pos) }
+    }
+
+    /// Where the next egg of `district` goes: in a row along its nido; nil without one (a placement that failed).
+    func nestSpot(_ district: Int) -> Vec? { World.nestSpot(buildings(in: district), eggs) }
+
+    static func nestSpot(_ buildings: [Building], _ eggs: [Egg]) -> Vec? {
+        guard let n = buildings.first(where: { $0.kind == .nido }) else { return nil }
+        let k = eggs.filter { n.rect.contains($0.pos) }.count
+        return Vec(n.rect.x + 16 + Double(k % 4) * 10, n.rect.y + n.rect.h / 2)
+    }
+
     /// Who lives in the casita `id` (at most 2), by bichito id.
     func occupants(of id: Int) -> [Int] { bichitos.filter { $0.home == id }.map(\.id) }
 
