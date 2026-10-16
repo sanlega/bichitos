@@ -127,7 +127,8 @@ final class GestureTests: XCTestCase {
     func testTapOnANoteFindsItsRunaway() {
         var w = World(testSeed: 1)
         var rng = SeededRNG(seed: 1)
-        let gone = w.bichito(w.add(Recipe.random(using: &rng), at: Vec(200, 200)))!
+        let id = w.add(Recipe.random(using: &rng), at: Vec(200, 200)) // its own statement: `w.bichito(w.add(…))` reads `w` before the add
+        let gone = w.bichito(id)!
         w.bichitos.removeAll()
         w.notes.append(Note(pos: gone.pos, text: "adiós", bichito: gone))
         XCTAssertEqual(w.note(at: gone.pos + Vec(12, 5), pad: 4), gone.id, "anywhere on the 20×16 u slip, plus the pad")
