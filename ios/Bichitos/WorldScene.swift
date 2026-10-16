@@ -750,7 +750,7 @@ final class WorldScene: SKScene, ObservableObject {
                 let f = Maqueta.frame(b)
                 node.position = screen(Vec(f.x, f.y))
                 node.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
-                node.zPosition = depth(Maqueta.sortY(b))
+                node.zPosition = b.kind == .flower ? 900 : depth(Maqueta.sortY(b)) // flowers lie flat: layer 4, under every bichito (#91)
                 node.color = tint
                 node.colorBlendFactor = amount
                 // Lit windows and lamps: a warmLight circle at 40%, added, radius 24 u (48 world units).
