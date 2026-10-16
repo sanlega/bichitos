@@ -66,6 +66,18 @@ enum Terrarium {
                 w.record(.hatched(w.bichitos[6].id))
             }
             let ghost = w.bichitos.removeLast() // ran away: only its note is left
+            // #37: one more, asleep in the casita wholly on screen nearest the middle, so the captures show one "Ocupado".
+            func whole(_ b: Building) -> Bool { v.contains(Vec(b.rect.x, b.rect.y)) && v.contains(Vec(b.rect.x + b.rect.w, b.rect.y + b.rect.h + 32)) }
+            let casitas = w.terrain.buildings.filter { $0.kind == .casita && $0.theme == 0 && $0.door != nil && whole($0) }
+            if let c = casitas.min(by: { ($0.door! - v.center).length < ($1.door! - v.center).length }), let door = c.door {
+                let id = w.add(Recipe.random(using: &rng), at: door) // its own statement: `w.index(of: w.add(…))` reads `w` before the add
+                let i = w.index(of: id)!
+                w.bichitos[i].pos = door
+                w.bichitos[i].home = c.id
+                w.bichitos[i].calm = 600
+                w.bichitos[i].needs.sleep = 0.1 // a full one wakes up
+                w.bichitos[i].enter(.sleep, for: 600)
+            }
             w.notes.append(Note(pos: ghost.pos, text: Names.goodbye(name: ghost.name, seed: 1, language: w.language), bichito: ghost))
             if CommandLine.arguments.contains("-screenshot-news") { // NewsFeed (#51): stories of different ages, oldest first
                 let b = w.bichitos.map(\.id)
