@@ -347,7 +347,13 @@ final class WorldScene: SKScene, ObservableObject {
         let onMap = level == .map
         sync(&dotNodes, onMap ? world.bichitos.map { ($0.id, $0.pos) } : [], make: makeDot)
         sync(&foodNodes, onMap ? [] : world.foods.map { ($0.id, $0.pos) }, make: makeFood)
-        sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() })
+        sync(&eggNodes, onMap ? [] : world.eggs.map { ($0.id, $0.pos) }, make: { _ in makeEgg() }, gone: { id, n in
+            if self.world.eggs.contains(where: { $0.id == id }) { n.removeFromParent() } else { Self.hatch(n) } // gone from the world: it hatched
+        })
+        for e in world.eggs { // #12: it trembles harder as it gets ready, and cracks in its last seconds
+            eggNodes[e.id]?.speed = 1 + 3 * CGFloat(max(0, 1 - e.hatchIn / World.hatchTime))
+            eggNodes[e.id]?.children.first?.isHidden = e.hatchIn > 20
+        }
         sync(&noteNodes, onMap ? [] : world.notes.map { ($0.bichito.id, $0.pos) }, make: { _ in makeNote() })
     }
 
@@ -511,7 +517,8 @@ final class WorldScene: SKScene, ObservableObject {
     }()
 
     /// Simple things (food, eggs, notes) appear, follow their world position and disappear with it.
-    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode) {
+    private func sync(_ nodes: inout [Int: SKNode], _ items: [(Int, Vec)], make: (Int) -> SKNode,
+                      gone: (Int, SKNode) -> Void = { $1.removeFromParent() }) {
         var alive = Set<Int>()
         for (id, pos) in items {
             alive.insert(id)
@@ -527,7 +534,7 @@ final class WorldScene: SKScene, ObservableObject {
             node.zPosition = depth(pos.y)
         }
         for (id, node) in nodes where !alive.contains(id) {
-            node.removeFromParent()
+            gone(id, node)
             nodes[id] = nil
         }
     }
@@ -611,11 +618,31 @@ final class WorldScene: SKScene, ObservableObject {
         return n
     }
 
+    /// An egg rocks now and then (`speed` hurries it); its first child is the crack, shown just before it hatches.
     private func makeEgg() -> SKNode {
         let n = SKShapeNode(ellipseOf: CGSize(width: 8 * pixel, height: 10 * pixel))
         n.fillColor = UIColor(red: 1, green: 0.96, blue: 0.88, alpha: 1)
         n.strokeColor = Ink.ink.withAlphaComponent(0.25)
+        let path = CGMutablePath(), p = pixel
+        path.move(to: CGPoint(x: -4 * p, y: 0))
+        for (k, x) in [-2, 0, 2, 4].enumerated() { path.addLine(to: CGPoint(x: CGFloat(x) * p, y: k % 2 == 0 ? p : -p)) }
+        let crack = SKShapeNode(path: path)
+        crack.strokeColor = Ink.ink.withAlphaComponent(0.6)
+        crack.lineWidth = max(1, p / 2)
+        crack.isHidden = true
+        n.addChild(crack)
+        let rock = SKAction.sequence([.rotate(toAngle: 0.2, duration: 0.08), .rotate(toAngle: -0.2, duration: 0.16),
+                                      .rotate(toAngle: 0, duration: 0.08)])
+        n.run(.repeatForever(.sequence([.wait(forDuration: 2, withRange: 1.5), rock, rock])))
         return n
+    }
+
+    /// The shell bursts: the egg swells, flashes white and fades while the chick (already in the world) appears there.
+    private static func hatch(_ n: SKNode) {
+        n.removeAllActions()
+        n.speed = 1
+        n.zRotation = 0
+        n.run(.sequence([.group([.scale(to: 1.6, duration: 0.25), .fadeOut(withDuration: 0.25)]), .removeFromParent()]))
     }
 
     private func makeNote() -> SKNode {
