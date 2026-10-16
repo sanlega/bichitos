@@ -91,6 +91,10 @@ final class WorldScene: SKScene, ObservableObject {
     private var finger: UITouch?
     private var grabOffset = Vec.zero
     private var dropping = Set<Int>() // just released from the editor: they fall in when their node appears
+    /// #40: the light over the world (r, g, b, amount), fading toward the phase's `DayPhase.shade`; and cloud shadows.
+    private var shade: [Double]?
+    private var tint = UIColor.white, amount: CGFloat = 0
+    private var clouds: [SKSpriteNode] = []
     private(set) var follow = Follow()
 
     /// The camera starts on `focus`, or on the centre of the first district.
@@ -399,7 +403,9 @@ final class WorldScene: SKScene, ObservableObject {
     }
 
     private func draw(alpha: Double, dt: Double) {
+        light(dt: dt)
         drawDistricts()
+        drawClouds()
         let inside = world.asleepInside, sleepingIn = Set(inside.values.joined())
         drawBuildings(inside)
         drawSigns()
@@ -425,6 +431,7 @@ final class WorldScene: SKScene, ObservableObject {
             // A dot instead on the map (`dotNodes`); asleep in its casita, its shut door and icon instead.
             node.isHidden = level == .map || sleepingIn.contains(b.id)
             node.render(b, dt: dt, moving: !world.districts[b.district].rect.contains(b.pos))
+            node.shade(tint, amount / 2) // half, so they still read (DESIGN.md "Ambiente")
         }
         for (id, node) in bichitoNodes where !alive.contains(id) {
             node.removeFromParent()
@@ -516,6 +523,8 @@ final class WorldScene: SKScene, ObservableObject {
                 if patch.texture !== placeholders[plain] { patch.texture = placeholders[plain] }
             }
             patch.isHidden = level == .map
+            patch.color = tint
+            patch.colorBlendFactor = amount
             guard level != .map else { continue }
             let f = Ground.frame(world.districts[k].rect)
             patch.position = screen(Vec(f.x, f.y))
@@ -597,6 +606,68 @@ final class WorldScene: SKScene, ObservableObject {
         }
     }
 
+    /// #40: eases the light toward the phase's in a few seconds (a fade, also with Reduce Motion); the first frame is just there.
+    private func light(dt: Double) {
+        let (c, a) = world.phase.shade, target = [Double(c.r) / 255, Double(c.g) / 255, Double(c.b) / 255, a]
+        let k = shade == nil ? 1 : 1 - exp(-dt)
+        let now = zip(shade ?? target, target).map { $0 + ($1 - $0) * k }
+        shade = now
+        tint = UIColor(red: now[0], green: now[1], blue: now[2], alpha: 1)
+        amount = CGFloat(now[3])
+        // The mist between districts takes it too: mist × tint, `amount` of the way.
+        let mist = [0xF3, 0xF1, 0xEC].map { Double($0) / 255 }
+        func lit(_ i: Int) -> CGFloat { CGFloat(mist[i] * (1 - now[3] + now[i] * now[3])) }
+        backgroundColor = UIColor(red: lit(0), green: lit(1), blue: lit(2), alpha: 1)
+    }
+
+    /// #40: big soft `ink` 6% shadows drifting across the map, over the world but under names and bubbles (`depth` stays
+    /// within ~10 of 1000). Not on the Mapa level, nor with Reduce Motion.
+    private func drawClouds() {
+        if clouds.isEmpty {
+            for _ in 0..<6 {
+                let c = SKSpriteNode(texture: WorldScene.cloud)
+                c.alpha = 0.06
+                c.zPosition = 1030
+                addChild(c)
+                clouds.append(c)
+            }
+        }
+        // shortcut: the clouds tile a 1600 world-unit square around the camera; one wraps only when it is far off screen.
+        let span = 1600.0, t = world.date.timeIntervalSince1970.truncatingRemainder(dividingBy: 1_000_000) * 4, at = lens.center
+        for (k, c) in clouds.enumerated() {
+            c.isHidden = level == .map || UIAccessibility.isReduceMotionEnabled
+            guard !c.isHidden else { continue }
+            let x = Double(k) * 271 + t, y = Double(k * k) * 157 + t * 0.35
+            c.position = screen(Vec(x - span * ((x - at.x) / span).rounded(), y - span * ((y - at.y) / span).rounded()))
+            c.size = CGSize(width: 320 * unit, height: 200 * unit)
+        }
+    }
+
+    /// A lumpy blob in ink, a few overlapping ovals filled as one shape.
+    private static let cloud: SKTexture = {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 40)).image { ctx in
+            let path = CGMutablePath()
+            for r in [CGRect(x: 0, y: 12, width: 34, height: 24), CGRect(x: 14, y: 2, width: 30, height: 30),
+                      CGRect(x: 30, y: 8, width: 34, height: 28), CGRect(x: 10, y: 18, width: 44, height: 22)] { path.addEllipse(in: r) }
+            ctx.cgContext.addPath(path)
+            ctx.cgContext.setFillColor(Ink.ink.cgColor)
+            ctx.cgContext.fillPath()
+        }
+        return SKTexture(image: image)
+    }()
+
+    /// warmLight at 40% in the middle, fading out to the edge of the circle.
+    private static let glow: SKTexture = {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { ctx in
+            let warm = UIColor(red: 1, green: 0xD2 / 255, blue: 0x7A / 255, alpha: 1)
+            let colors = [warm.withAlphaComponent(0.4).cgColor, warm.withAlphaComponent(0).cgColor] as CFArray
+            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
+            ctx.cgContext.drawRadialGradient(g, startCenter: CGPoint(x: 32, y: 32), startRadius: 0,
+                                             endCenter: CGPoint(x: 32, y: 32), endRadius: 32, options: [])
+        }
+        return SKTexture(image: image)
+    }()
+
     /// `lock.fill` in ink at 35%, drawn into a bitmap: SpriteKit ignores a symbol's tint.
     private static let lock: SKTexture = {
         let symbol = UIImage(systemName: "lock.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold))!
@@ -620,6 +691,7 @@ final class WorldScene: SKScene, ObservableObject {
             }
             node.position = screen(pos)
             node.zPosition = depth(pos.y)
+            if let sprite = node as? SKSpriteNode { sprite.color = tint; sprite.colorBlendFactor = amount }
         }
         for (id, node) in nodes where !alive.contains(id) {
             gone(id, node)
@@ -648,7 +720,9 @@ final class WorldScene: SKScene, ObservableObject {
             for b in world.terrain.buildings where open.contains(b.theme) && Maqueta.frame(b).intersects(near) {
                 alive.insert(b.id)
                 let who = inside[b.id] ?? []
-                let key = Maqueta.key(b, closed: !who.isEmpty, level: level)
+                let night = world.phase != .day
+                let lit = b.kind == .casita ? world.windowLit(b.id) : night && (b.kind == .lamp || b.kind == .monument)
+                let key = Maqueta.key(b, closed: !who.isEmpty, lit: lit, level: level)
                 used.insert(key)
                 let texture = buildingTextures[key] ?? Fachada.paint(b, key)
                 buildingTextures[key] = texture
@@ -663,6 +737,12 @@ final class WorldScene: SKScene, ObservableObject {
                     icon.size = CGSize(width: CGFloat(Look.Icon.canvas) * 2, height: CGFloat(Look.Icon.canvas) * 2) // like BichitoNode's
                     icon.zPosition = 100
                     node.addChild(icon)
+                    for _ in Maqueta.lights(b) { // after the icon, which stays `children.first`
+                        let glow = SKSpriteNode(texture: WorldScene.glow)
+                        glow.blendMode = .add
+                        glow.zPosition = 1
+                        node.addChild(glow)
+                    }
                     buildingNodes[b.id] = node
                     addChild(node)
                 }
@@ -671,6 +751,14 @@ final class WorldScene: SKScene, ObservableObject {
                 node.position = screen(Vec(f.x, f.y))
                 node.size = CGSize(width: CGFloat(f.w) * unit, height: CGFloat(f.h) * unit)
                 node.zPosition = b.kind == .flower ? 900 : depth(Maqueta.sortY(b)) // flowers lie flat: layer 4, under every bichito (#91)
+                node.color = tint
+                node.colorBlendFactor = amount
+                // Lit windows and lamps: a warmLight circle at 40%, added, radius 24 u (48 world units).
+                for (glow, p) in zip(node.children.dropFirst(), Maqueta.lights(b)) {
+                    glow.isHidden = !lit
+                    glow.position = CGPoint(x: CGFloat(p.x + m) * unit, y: -CGFloat(p.y + m) * unit)
+                    (glow as? SKSpriteNode)?.size = CGSize(width: 96 * unit, height: 96 * unit)
+                }
                 guard let icon = node.children.first as? SKSpriteNode else { continue }
                 let sleeper = who.first.flatMap { world.bichito($0) }
                 let state = sleeper.flatMap { Look.bubble(mood: $0.mood, needs: $0.needs, dizzy: $0.dizzy) }
@@ -952,6 +1040,12 @@ final class BichitoNode: SKNode {
 
     /// A happy squash: the spring bounces it back.
     func squish() { spring.kick(-5) }
+
+    /// #40: the light of the hour on its body only; names, bubbles and icons stay as they are.
+    func shade(_ tint: UIColor, _ amount: CGFloat) {
+        sprite.color = tint
+        sprite.colorBlendFactor = amount
+    }
 
     /// Falls from `height` points above its feet, then squashes on landing and springs back.
     func dropIn(from height: CGFloat) {
