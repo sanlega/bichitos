@@ -82,19 +82,6 @@ struct SpatialHash {
     }
 }
 
-/// TEMPORARY (#92): where `tick()` spends its time, in ns per phase.
-enum Profile {
-    static let names = ["tick total", "update()", "encounters", "emigrate", "escapeNeglected", "hatchEggs", "tick preamble (terrain, drowsiness)", "  decide()", "  toBench()", "  meet()", "record (events+news)", "  nearestWalkable at start", "  steer()", "  breed()", "  add() child"]
-    static var ns = Array(repeating: 0, count: 15)
-    static var hits = Array(repeating: 0, count: 15)
-    static func now() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
-    static func add(_ k: Int, _ since: UInt64) { ns[k] += Int(now() - since); hits[k] += 1 }
-    static func reset() { ns = Array(repeating: 0, count: 15); hits = ns }
-    static var report: String {
-        names.indices.map { "\(names[$0]): " + String(format: "%.3f s (%ld)", Double(ns[$0]) / 1e9, hits[$0]) }.joined(separator: "\n")
-    }
-}
-
 /// The whole terrarium. Pure value, deterministic for a seed, always advanced in fixed 1/20 s ticks.
 struct World: Codable, Equatable {
     static let hz = 20.0
@@ -274,16 +261,15 @@ struct World: Codable, Equatable {
         }
     }
 
-    mutating func tick() {
-        let p0 = Profile.now()
-        defer { Profile.add(0, p0) }
+    mutating func tick() { tick(terrain) }
+
+    /// `ground` is `terrain`, which never changes: the catch-up fetches it once for all its ticks, not once per tick.
+    private mutating func tick(_ ground: Terrain) {
         tickCount += 1
         date += World.dt
         let watched = visibleRect != nil
         let walls = bounds // once per tick, not per body: districts only unlock after the moves
-        let ground = terrain
         let drowsy = drowsiness
-        Profile.add(6, p0)
         if watched {
             for i in bichitos.indices {
                 let visible = isVisible(bichitos[i].pos)
@@ -295,22 +281,15 @@ struct World: Codable, Equatable {
             let lod = World.lod, h = World.dt * Double(World.lod)
             var i = (lod - tickCount % lod) % lod
             while i < bichitos.count {
-                let u0 = Profile.now()
                 update(i, h, walls, ground, drowsy)
-                Profile.add(1, u0)
                 i += lod
             }
         }
         if watched { collide() }
-        var q = Profile.now()
-        if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters(); Profile.add(2, q) }
-        q = Profile.now()
-        if tickCount % 600 == 0 { emigrate(); Profile.add(3, q) }
-        q = Profile.now()
-        if tickCount % 20 == 0 { escapeNeglected(); Profile.add(4, q) }
-        q = Profile.now()
+        if tickCount % (watched ? World.encounterEvery : 2 * World.encounterEvery) == 0 { encounters() }
+        if tickCount % 600 == 0 { emigrate() }
+        if tickCount % 20 == 0 { escapeNeglected() }
         hatchEggs(World.dt)
-        Profile.add(5, q)
     }
 
     /// Fast-forward after being away: the last 2 h fully simulated, the rest (up to 7 days) only needs and escapes.
@@ -323,7 +302,8 @@ struct World: Codable, Equatable {
         passTime(total - full)
         let watching = visibleRect
         visibleRect = nil
-        for _ in 0..<Int(full * World.hz) { tick() }
+        let ground = terrain
+        for _ in 0..<Int(full * World.hz) { tick(ground) }
         visibleRect = watching
     }
 
@@ -367,9 +347,7 @@ struct World: Codable, Equatable {
     private mutating func update(_ i: Int, _ h: Double, _ walls: Rect, _ ground: Terrain, _ drowsy: Double) {
         var b = bichitos[i]
         guard b.mood != .held else { return }
-        let n0 = Profile.now()
-        b.pos = ground.nearestWalkable(b.pos)
-        Profile.add(11, n0) // only moves one that something else left in water or rock
+        b.pos = ground.nearestWalkable(b.pos) // only moves one that something else left in water or rock
         let r = b.recipe
         b.timer -= h
         b.calm -= h
@@ -411,7 +389,7 @@ struct World: Codable, Equatable {
             let d = o.pos - b.pos
             switch b.mood {
             case .love:
-                if let k = b.bench { let t0 = Profile.now(); dir = toBench(i, &b, j, o, k, h, ground, drowsy); pace = 0.8; Profile.add(8, t0) }
+                if let k = b.bench { dir = toBench(i, &b, j, o, k, h, ground, drowsy); pace = 0.8 }
                 else if d.length > r.radius + o.recipe.radius + 4 { dir = d.unit; pace = 0.8 }
             case .fight: dir = d.unit; pace = 1.2
             case .chase: dir = d.unit; pace = 1.4
@@ -441,9 +419,7 @@ struct World: Codable, Equatable {
             break
         }
         if dir != .zero {
-            let s0 = Profile.now()
             let d = steer(dir, b.pos, b.recipe.radius, b.id, ground)
-            Profile.add(12, s0)
             if d != dir { dir = d; if b.mood == .wander { b.heading = atan2(d.y, d.x) } }
         }
 
@@ -456,7 +432,7 @@ struct World: Codable, Equatable {
         b.pos = b.pos + b.vel * h
         bounce(&b, walls)
         if !ground.walkable(b.pos) { shore(&b, from, ground) }
-        if b.timer <= 0 { let d0 = Profile.now(); decide(&b, ground, drowsy); Profile.add(7, d0) }
+        if b.timer <= 0 { decide(&b, ground, drowsy) }
         bichitos[i] = b
     }
 
@@ -598,7 +574,7 @@ struct World: Codable, Equatable {
                 met = j
                 return true
             }
-            if met >= 0 { let m0 = Profile.now(); meet(i, met); Profile.add(9, m0) }
+            if met >= 0 { meet(i, met) }
         }
     }
 
@@ -670,8 +646,6 @@ struct World: Codable, Equatable {
 
     /// Two who adore each other lay an egg; `i` sits on it until it hatches.
     private mutating func breed(_ i: Int, _ j: Int) {
-        let b0 = Profile.now()
-        defer { Profile.add(13, b0) }
         let a = bichitos[i], b = bichitos[j]
         guard (a.affinity[b.id] ?? 0) >= 0.7, (b.affinity[a.id] ?? 0) >= 0.7,
               a.breedCooldown <= 0, b.breedCooldown <= 0,
@@ -723,9 +697,7 @@ struct World: Codable, Equatable {
         for k in eggs.indices { eggs[k].hatchIn -= h }
         while let k = eggs.firstIndex(where: { $0.hatchIn <= 0 }) {
             let e = eggs.remove(at: k)
-            let a0 = Profile.now()
             let child = add(e.recipe, at: e.pos, parents: e.parents)
-            Profile.add(14, a0)
             if let c = index(of: child) { bichitos[c].enter(.happy, for: 2) }
             for p in bichitos.indices where bichitos[p].mood == .incubating && bichitos[p].target == e.id {
                 bichitos[p].enter(.happy, for: 3)
@@ -799,8 +771,6 @@ struct World: Codable, Equatable {
     }
 
     mutating func record(_ e: WorldEvent) {
-        let r0 = Profile.now()
-        defer { Profile.add(10, r0) }
         events.append(e)
         tally.n += 1
         report(e)

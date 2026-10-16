@@ -172,17 +172,9 @@ final class SimTests: XCTestCase {
 
     func testTwoHourCatchUpWithFortyBichitosIsFast() {
         var w = world(seed: 21, count: 40)
-        Profile.reset()
         let t0 = Date()
         w.catchUp(seconds: 2 * 3600)
         let elapsed = Date().timeIntervalSince(t0)
-        print("PROFILE\n" + Profile.report)
-        var moods: [String: Int] = [:]
-        for b in w.bichitos { moods[b.mood.rawValue, default: 0] += 1 }
-        print("PROFILE moods \(moods.sorted { $0.key < $1.key }) eggs \(w.eggs.count) events \(w.events.count)")
-        var kinds: [String: Int] = [:]
-        for e in w.events { kinds[String("\(e)".prefix { $0 != "(" }), default: 0] += 1 }
-        print("PROFILE events \(kinds.sorted { $0.key < $1.key })")
         print("CATCHUP 2h x 40 bichitos: \(String(format: "%.3f", elapsed)) s, \(w.bichitos.count) bichitos, \(w.events.count) events")
         // Debug build on a shared CI simulator: ~1.5 s here (#65), and it swings with runner load; a real regression still trips 6.
         XCTAssertLessThan(elapsed, 6, "catchUp took \(elapsed) s")
