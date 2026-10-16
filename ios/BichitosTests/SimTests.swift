@@ -176,8 +176,7 @@ final class SimTests: XCTestCase {
         let t0 = Date()
         w.catchUp(seconds: 2 * 3600)
         let elapsed = Date().timeIntervalSince(t0)
-        print("PROFILE
-" + Profile.report)
+        print("PROFILE\n" + Profile.report)
         var moods: [String: Int] = [:]
         for b in w.bichitos { moods[b.mood.rawValue, default: 0] += 1 }
         print("PROFILE moods \(moods.sorted { $0.key < $1.key }) eggs \(w.eggs.count) events \(w.events.count)")

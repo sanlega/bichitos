@@ -91,8 +91,7 @@ enum Profile {
     static func add(_ k: Int, _ since: UInt64) { ns[k] += Int(now() - since); hits[k] += 1 }
     static func reset() { ns = Array(repeating: 0, count: 15); hits = ns }
     static var report: String {
-        names.indices.map { "\(names[$0]): " + String(format: "%.3f s (%ld)", Double(ns[$0]) / 1e9, hits[$0]) }.joined(separator: "
-")
+        names.indices.map { "\(names[$0]): " + String(format: "%.3f s (%ld)", Double(ns[$0]) / 1e9, hits[$0]) }.joined(separator: "\n")
     }
 }
 
