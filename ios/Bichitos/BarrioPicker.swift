@@ -133,3 +133,43 @@ struct BarrioPicker: View {
         return count == 1 ? one : many
     }
 }
+
+/// DESIGN.md `UnlockBanner`: a district just opened, with its tint and who it draws; «Ir a verlo» takes the camera there.
+struct UnlockBanner: View {
+    let district: District
+    let language: Language
+    var go: () -> Void
+    var close: () -> Void
+
+    var body: some View {
+        let es = language == .es, theme = district.theme
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(hex: theme.tint))
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(es ? "Barrio nuevo" : "New district")
+                        .font(.system(.footnote, design: .rounded, weight: .semibold))
+                        .foregroundStyle(Color.inkDim)
+                    Text(district.name(language))
+                        .font(.system(.title3, design: .rounded, weight: .heavy))
+                    Text(BarrioPicker.affinity(theme.affine, es: es))
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.inkDim)
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 8)
+                Button(action: close) { Image(systemName: "xmark") }
+                    .buttonStyle(IconButtonStyle())
+                    .accessibilityLabel(es ? "Cerrar" : "Close")
+            }
+            Button(es ? "Ir a verlo" : "Go see it", action: go)
+                .buttonStyle(PrimaryButtonStyle())
+        }
+        .padding(16)
+        .foregroundStyle(Color.ink)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card).floating())
+    }
+}
